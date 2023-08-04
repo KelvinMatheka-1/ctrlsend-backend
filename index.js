@@ -1,66 +1,106 @@
-// index.js
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const { Pool } = require('pg');
+
 const app = express();
 const PORT = 5000; // Change this to the desired port number
+
+// Create a new Pool instance for database connection
+const pool = new Pool({
+  user: 'your_postgres_username', // Replace with your PostgreSQL username
+  password: 'your_postgres_password', // Replace with your PostgreSQL password
+  host: 'localhost', // Replace with your PostgreSQL server address if it's not running locally
+  database: 'p2p_money_transfer', // Replace with the name of your PostgreSQL database
+  port: 5432, // Change this if your PostgreSQL server uses a different port
+});
 
 // Middleware
 app.use(bodyParser.json());
 app.use(cors());
 
-// Start the server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+// Test the database connection
+pool.connect((err, client, done) => {
+  if (err) {
+    console.error('Error connecting to PostgreSQL:', err.message);
+  } else {
+    console.log('Connected to PostgreSQL database!');
+    // Release the client when the app is shut down or when an error occurs
+    done();
+  }
 });
 
-let users = [];
-
-// API Endpoints
-app.post('/api/register', (req, res) => {
+// User Registration
+app.post('/api/register', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'Please provide both username and password.' });
   }
 
-  // Check if the user already exists
-  if (users.some((user) => user.username === username)) {
-    return res.status(409).json({ error: 'User already exists.' });
-  }
+  try {
+    // Check if the user already exists in the database
+    const existingUser = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+    if (existingUser.rowCount > 0) {
+      return res.status(409).json({ error: 'User already exists.' });
+    }
 
-  // Store the new user in the in-memory data
-  users.push({ username, password, balance: 0 });
-  res.json({ message: 'User registered successfully.' });
+    // Store the new user in the database
+    await pool.query('INSERT INTO users (username, password) VALUES ($1, $2)', [username, password]);
+
+    res.json({ message: 'User registered successfully.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal server error.' });
+  }
 });
 
-app.post('/api/login', (req, res) => {
+// User Login
+app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
-  const user = users.find((user) => user.username === username && user.password === password);
-  if (!user) {
-    return res.status(401).json({ error: 'Invalid username or password.' });
+  try {
+    const user = await pool.query('SELECT * FROM users WHERE username = $1 AND password = $2', [username, password]);
+    if (user.rowCount === 0) {
+      return res.status(401).json({ error: 'Invalid username or password.' });
+    }
+
+    res.json({ message: 'Login successful.', username: user.rows[0].username });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal server error.' });
   }
-  res.json({ message: 'Login successful.', username: user.username });
 });
 
-app.post('/api/transfer', (req, res) => {
+// Money Transfer
+app.post('/api/transfer', async (req, res) => {
   const { sender, recipient, amount } = req.body;
-  const senderUser = users.find((user) => user.username === sender);
-  const recipientUser = users.find((user) => user.username === recipient);
-  
-  if (!senderUser || !recipientUser) {
-    return res.status(404).json({ error: 'Sender or recipient not found.' });
+  try {
+    const senderUser = await pool.query('SELECT * FROM users WHERE username = $1', [sender]);
+    const recipientUser = await pool.query('SELECT * FROM users WHERE username = $1', [recipient]);
+
+    if (senderUser.rowCount === 0 || recipientUser.rowCount === 0) {
+      return res.status(404).json({ error: 'Sender or recipient not found.' });
+    }
+
+    if (amount <= 0) {
+      return res.status(400).json({ error: 'Amount must be greater than zero.' });
+    }
+
+    if (senderUser.rows[0].balance < amount) {
+      return res.status(403).json({ error: 'Insufficient funds.' });
+    }
+
+    // Perform the money transfer
+    await pool.query('UPDATE users SET balance = balance - $1 WHERE username = $2', [amount, sender]);
+    await pool.query('UPDATE users SET balance = balance + $1 WHERE username = $2', [amount, recipient]);
+
+    res.json({ message: 'Money transferred successfully.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal server error.' });
   }
+});
 
-  if (amount <= 0) {
-    return res.status(400).json({ error: 'Amount must be greater than zero.' });
-  }
-
-  if (senderUser.balance < amount) {
-    return res.status(403).json({ error: 'Insufficient funds.' });
-  }
-
-  senderUser.balance -= amount;
-  recipientUser.balance += amount;
-
-  res.json({ message: 'Money transferred successfully.' });
+// Start the server
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
