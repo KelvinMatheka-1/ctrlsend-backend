@@ -167,6 +167,47 @@ app.post("/api/withdraw", async (req, res) => {
   }
 });
 
+//sender approval
+
+app.get("/api/pending-withdrawals", async (req, res) => {
+  try {
+    // Retrieve pending withdrawal requests
+    const pendingWithdrawals = await pool.query(
+      "SELECT * FROM withdrawal_requests WHERE is_approved = false"
+    );
+
+    res.json(pendingWithdrawals.rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
+
+app.put("/api/approve-withdrawal/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    // Check if the withdrawal request exists
+    const withdrawalRequest = await pool.query(
+      "SELECT * FROM withdrawal_requests WHERE id = $1",
+      [id]
+    );
+    if (withdrawalRequest.rowCount === 0) {
+      return res.status(404).json({ error: "Withdrawal request not found." });
+    }
+
+    // Update the withdrawal request to be approved
+    await pool.query(
+      "UPDATE withdrawal_requests SET is_approved = true WHERE id = $1",
+      [id]
+    );
+
+    res.json({ message: "Withdrawal request approved successfully." });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
+
 
 //get methods
 
