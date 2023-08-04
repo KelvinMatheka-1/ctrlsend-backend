@@ -169,36 +169,39 @@ app.post("/api/withdraw", async (req, res) => {
 
 //sender approval
 
-app.get("/api/pending-withdrawals", async (req, res) => {
+app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
+  const { requestId } = req.params;
   try {
-    // Retrieve pending withdrawal requests
-    const pendingWithdrawals = await pool.query(
-      "SELECT * FROM withdrawal_requests WHERE is_approved = false"
-    );
-
-    res.json(pendingWithdrawals.rows);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Internal server error." });
-  }
-});
-
-app.put("/api/approve-withdrawal/:id", async (req, res) => {
-  const { id } = req.params;
-  try {
-    // Check if the withdrawal request exists
-    const withdrawalRequest = await pool.query(
+    // Check if the request exists
+    const request = await pool.query(
       "SELECT * FROM withdrawal_requests WHERE id = $1",
-      [id]
+      [requestId]
     );
-    if (withdrawalRequest.rowCount === 0) {
+
+    if (request.rowCount === 0) {
       return res.status(404).json({ error: "Withdrawal request not found." });
     }
 
-    // Update the withdrawal request to be approved
+    // Check if the sender is the owner of the request
+    const sender = await pool.query(
+      "SELECT * FROM users WHERE username = $1",
+      [request.rows[0].sender]
+    );
+
+    if (sender.rowCount === 0) {
+      return res.status(404).json({ error: "Sender not found." });
+    }
+
+    if (sender.rows[0].id !== req.user.id) {
+      return res
+        .status(403)
+        .json({ error: "You are not authorized to approve this request." });
+    }
+
+    // Update the status to 'approved'
     await pool.query(
-      "UPDATE withdrawal_requests SET is_approved = true WHERE id = $1",
-      [id]
+      "UPDATE withdrawal_requests SET status = 'approved' WHERE id = $1",
+      [requestId]
     );
 
     res.json({ message: "Withdrawal request approved successfully." });
