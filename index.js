@@ -137,7 +137,6 @@ app.post("/api/transfer", async (req, res) => {
 
 //get methods
 
-
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

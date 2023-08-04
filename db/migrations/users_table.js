@@ -4,6 +4,8 @@ exports.up = function (knex) {
     table.string('username').notNullable();
     table.string('email').notNullable();
     table.string('password').notNullable();
+    table.decimal('balance').defaultTo(0.00); // Set the default value to 0.00
+    table.timestamp('created_at').defaultTo(knex.fn.now());
   });
 };
 
