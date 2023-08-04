@@ -6,10 +6,12 @@ const { Pool } = require('pg');
 const app = express();
 const PORT = 5000; // Change this to the desired port number
 
+require('dotenv').config();
+
 // Create a new Pool instance for database connection
 const pool = new Pool({
-  user: 'your_postgres_username', // Replace with your PostgreSQL username
-  password: 'your_postgres_password', // Replace with your PostgreSQL password
+  user: process.env.PG_USERNAME, // Replace with your PostgreSQL username
+  password: process.env.PG_PASSWORD, // Replace with your PostgreSQL password
   host: 'localhost', // Replace with your PostgreSQL server address if it's not running locally
   database: 'p2p_money_transfer', // Replace with the name of your PostgreSQL database
   port: 5432, // Change this if your PostgreSQL server uses a different port
