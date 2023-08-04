@@ -213,6 +213,16 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
 
 
 //get methods
+// Get All Users
+app.get("/api/users", async (req, res) => {
+  try {
+    const users = await pool.query("SELECT * FROM users");
+    res.json(users.rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
 
 // Start the server
 app.listen(PORT, () => {
