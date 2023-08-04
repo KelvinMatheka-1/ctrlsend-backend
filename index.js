@@ -135,6 +135,39 @@ app.post("/api/transfer", async (req, res) => {
   }
 });
 
+//withdrawal request
+app.post("/api/withdraw", async (req, res) => {
+  const { username, amount } = req.body;
+  try {
+    // Check if the recipient exists in the database
+    const recipientUser = await pool.query(
+      "SELECT * FROM users WHERE username = $1",
+      [username]
+    );
+    if (recipientUser.rowCount === 0) {
+      return res.status(404).json({ error: "Recipient not found." });
+    }
+
+    if (amount <= 0) {
+      return res
+        .status(400)
+        .json({ error: "Withdrawal amount must be greater than zero." });
+    }
+
+    // Store the withdrawal request in the database
+    await pool.query(
+      "INSERT INTO withdrawal_requests (user_id, amount) VALUES ($1, $2)",
+      [recipientUser.rows[0].id, amount]
+    );
+
+    res.json({ message: "Withdrawal request sent successfully." });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
+
+
 //get methods
 
 // Start the server
