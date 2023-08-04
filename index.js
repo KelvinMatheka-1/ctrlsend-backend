@@ -2,6 +2,7 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const { Pool } = require("pg");
+const bcrypt = require("bcrypt");
 
 const app = express();
 const PORT = 5000; // Change this to the desired port number
@@ -34,17 +35,17 @@ pool.connect((err, client, done) => {
 
 // User Registration
 app.post("/api/register", async (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) {
+  const { username, email, password } = req.body;
+  if (!username || !email || !password) {
     return res
       .status(400)
-      .json({ error: "Please provide both username and password." });
+      .json({ error: "Please provide username, email, and password." });
   }
 
   try {
     // Check if the user already exists in the database
     const existingUser = await pool.query(
-      "SELECT * FROM users WHERE username = $500",
+      "SELECT * FROM users WHERE username = $1",
       [username]
     );
     if (existingUser.rowCount > 0) {
@@ -52,80 +53,24 @@ app.post("/api/register", async (req, res) => {
     }
 
     // Store the new user in the database
-    await pool.query("INSERT INTO users (username, password) VALUES ($1, $2)", [
-      username,
-      password,
-    ]);
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = await pool.query(
+      'INSERT INTO users (username, email, password) VALUES ($1, $2, $3) RETURNING *',
+      [username, email, hashedPassword]
+    );
 
-    res.json({ message: "User registered successfully." });
+    res.json(newUser.rows[0]);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Internal server error." });
+    res.status(500).json({ error: "An error occurred while registering the user." });
   }
 });
 
 // User Login
-app.post("/api/login", async (req, res) => {
-  const { username, password } = req.body;
-  try {
-    const user = await pool.query(
-      "SELECT * FROM users WHERE username = $1 AND password = $2",
-      [username, password]
-    );
-    if (user.rowCount === 0) {
-      return res.status(401).json({ error: "Invalid username or password." });
-    }
-
-    res.json({ message: "Login successful.", username: user.rows[0].username });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Internal server error." });
-  }
-});
+// ... (your existing login code) ...
 
 // Money Transfer
-app.post("/api/transfer", async (req, res) => {
-  const { sender, recipient, amount } = req.body;
-  try {
-    const senderUser = await pool.query(
-      "SELECT * FROM users WHERE username = $1",
-      [sender]
-    );
-    const recipientUser = await pool.query(
-      "SELECT * FROM users WHERE username = $1",
-      [recipient]
-    );
-
-    if (senderUser.rowCount === 0 || recipientUser.rowCount === 0) {
-      return res.status(404).json({ error: "Sender or recipient not found." });
-    }
-
-    if (amount <= 0) {
-      return res
-        .status(400)
-        .json({ error: "Amount must be greater than zero." });
-    }
-
-    if (senderUser.rows[0].balance < amount) {
-      return res.status(403).json({ error: "Insufficient funds." });
-    }
-
-    // Perform the money transfer
-    await pool.query(
-      "UPDATE users SET balance = balance - $1 WHERE username = $2",
-      [amount, sender]
-    );
-    await pool.query(
-      "UPDATE users SET balance = balance + $1 WHERE username = $2",
-      [amount, recipient]
-    );
-
-    res.json({ message: "Money transferred successfully." });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Internal server error." });
-  }
-});
+// ... (your existing money transfer code) ...
 
 // Start the server
 app.listen(PORT, () => {
