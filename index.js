@@ -46,7 +46,6 @@ pool.connect((err, client, done) => {
   }
 });
 
-
 // Set up session middleware
 app.use(
   session({
@@ -231,12 +230,7 @@ app.post("/api/withdraw", async (req, res) => {
 });
 
 //sender approval
-
 app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
-  // if (!req.user || !req.user.id) {
-  //   return res.status(401).json({ error: "Unauthorized. User not authenticated." });
-  // }
-
   const { requestId } = req.params;
   try {
     // Check if the request exists
@@ -249,17 +243,8 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
       return res.status(404).json({ error: "Withdrawal request not found." });
     }
 
-    // Check if the sender is the owner of the request
-    const sender = await pool.query("SELECT * FROM users WHERE id = $1", [
-      req.user.id,
-    ]);
-
-    if (sender.rowCount === 0) {
-      return res.status(404).json({ error: "Sender not found." });
-    }
-
     // Check if the sender is authorized to approve the request
-    if (request.rows[0].user_id !== req.user.id) {
+    if (request.rows[0].user_id !== req.session.user.id) {
       return res
         .status(403)
         .json({ error: "You are not authorized to approve this request." });
@@ -279,7 +264,6 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
 });
 
 //Reject the request
-
 app.patch("/api/reject-withdrawal/:requestId", async (req, res) => {
   const { requestId } = req.params;
   try {
@@ -293,16 +277,8 @@ app.patch("/api/reject-withdrawal/:requestId", async (req, res) => {
       return res.status(404).json({ error: "Withdrawal request not found." });
     }
 
-    // Check if the sender is the owner of the request
-    const sender = await pool.query("SELECT * FROM users WHERE username = $1", [
-      request.rows[0].sender,
-    ]);
-
-    if (sender.rowCount === 0) {
-      return res.status(404).json({ error: "Sender not found." });
-    }
-
-    if (sender.rows[0].id !== req.user.id) {
+    // Check if the sender is authorized to reject the request
+    if (request.rows[0].user_id !== req.session.user.id) {
       return res
         .status(403)
         .json({ error: "You are not authorized to reject this request." });
@@ -320,6 +296,7 @@ app.patch("/api/reject-withdrawal/:requestId", async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
 
 //get methods
 
