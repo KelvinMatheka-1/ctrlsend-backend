@@ -3,11 +3,21 @@ const bodyParser = require("body-parser");
 const cors = require("cors");
 const { Pool } = require("pg");
 const bcrypt = require("bcrypt");
+const session = require("express-session");
 
 const app = express();
 const PORT = 5000; // Change this to the desired port number
 
 // require("dotenv").config();
+
+// Set up session middleware
+app.use(
+  session({
+    secret: "your-secret-key", // Change this to a secure secret key
+    resave: false,
+    saveUninitialized: false,
+  })
+);
 
 // Create a new Pool instance for database connection
 const pool = new Pool({
@@ -172,6 +182,10 @@ app.post("/api/withdraw", async (req, res) => {
 //sender approval
 
 app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ error: "Unauthorized. User not authenticated." });
+  }
+
   const { requestId } = req.params;
   try {
     // Check if the request exists
