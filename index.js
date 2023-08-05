@@ -9,9 +9,6 @@ const { v4: uuidv4 } = require("uuid");
 const app = express();
 const PORT = 5000; // Change this to the desired port number
 
-// Custom object to store active sessions
-let activeSessions = [];
-
 // require("dotenv").config();
 
 // Authentication Middleware
@@ -48,6 +45,7 @@ pool.connect((err, client, done) => {
     done();
   }
 });
+
 
 // Set up session middleware
 app.use(
@@ -120,9 +118,6 @@ app.post("/api/login", async (req, res) => {
       // Add any other user information you want to store in the session
     };
 
-    // Push the session into the array of logged-in users
-    activeSessions.push(req.session);
-
     res.json({ message: "Login successful.", username: user.rows[0].username });
   } catch (error) {
     console.error(error);
@@ -132,11 +127,6 @@ app.post("/api/login", async (req, res) => {
 
 // User Logout
 app.post("/api/logout", (req, res) => {
-  // Remove the session from the array of logged-in users
-  activeSessions = activeSessions.filter(
-    (session) => session.id !== req.session.id
-  );
-
   // Clear the user session to log the user out
   req.session.destroy((err) => {
     if (err) {
@@ -345,19 +335,13 @@ app.get("/api/users", async (req, res) => {
 });
 
 // Get the currently logged-in user
+app.get("/api/current-user", requireAuth, (req, res) => {
+  // The user is authenticated, so req.session.user should contain the user information
+  const user = req.session.user;
 
-app.get("/api/logged-in-users", (req, res) => {
-  const loggedInUsers = activeSessions.map((session) => session.user);
-  res.json(loggedInUsers);
+  // Return the user information as a JSON response
+  res.json({ user });
 });
-
-// app.get("/api/current-user", requireAuth, (req, res) => {
-//   // The user is authenticated, so req.session.user should contain the user information
-//   const user = req.session.user;
-
-//   // Return the user information as a JSON response
-//   res.json({ user });
-// });
 
 // Get all withdrawal requests
 app.get("/api/withdrawal-requests", async (req, res) => {
