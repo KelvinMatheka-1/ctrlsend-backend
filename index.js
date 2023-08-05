@@ -229,7 +229,7 @@ app.post("/api/withdraw", async (req, res) => {
   }
 });
 
-//sender approval
+// Sender approval
 app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
   const { requestId } = req.params;
   try {
@@ -256,12 +256,43 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
       [requestId]
     );
 
+    // Get the requested amount from the withdrawal request
+    const requestedAmount = request.rows[0].amount;
+
+    // Get the user's balance
+    const user = await pool.query(
+      "SELECT * FROM users WHERE id = $1",
+      [request.rows[0].user_id]
+    );
+
+    if (user.rowCount === 0) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    // Check if the user has enough balance to withdraw
+    if (user.rows[0].balance < requestedAmount) {
+      return res.status(403).json({ error: "Insufficient funds." });
+    }
+
+    // Deduct the requested amount from the user's balance
+    await pool.query(
+      "UPDATE users SET balance = balance - $1 WHERE id = $2",
+      [requestedAmount, request.rows[0].user_id]
+    );
+
+    // Update the status of the withdrawal request to 'approved'
+    await pool.query(
+      "UPDATE withdrawal_requests SET status = 'approved' WHERE id = $1",
+      [requestId]
+    );
+
     res.json({ message: "Withdrawal request approved successfully." });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
 
 //Reject the request
 app.patch("/api/reject-withdrawal/:requestId", async (req, res) => {
@@ -296,7 +327,6 @@ app.patch("/api/reject-withdrawal/:requestId", async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
-
 
 //get methods
 
