@@ -4,16 +4,22 @@ const cors = require("cors");
 const { Pool } = require("pg");
 const bcrypt = require("bcrypt");
 const session = require("express-session");
+const { v4: uuidv4 } = require("uuid");
 
 const app = express();
 const PORT = 5000; // Change this to the desired port number
+
+// Custom object to store active sessions
+const activeSessions = {};
 
 // require("dotenv").config();
 
 // Authentication Middleware
 function requireAuth(req, res, next) {
   if (!req.session.user) {
-    return res.status(401).json({ error: "Unauthorized. User not authenticated." });
+    return res
+      .status(401)
+      .json({ error: "Unauthorized. User not authenticated." });
   }
   // User is authenticated, proceed to the next middleware or route handler
   next();
@@ -43,25 +49,14 @@ pool.connect((err, client, done) => {
   }
 });
 
-const session = require("express-session");
-const { v4: uuidv4 } = require("uuid");
-
-
 // Set up session middleware
 app.use(
   session({
-    secret: uuidv4, // Change this to a secure secret key
+    secret: uuidv4(), // Change this to a secure secret key
     resave: false,
     saveUninitialized: false,
   })
 );
-
-// Protected route example
-app.get("/api/protected", requireAuth, (req, res) => {
-  // The user is authenticated, handle the protected route logic here
-  const user = req.session.user;
-  res.json({ message: "This is a protected route." });
-});
 
 // User Registration
 app.post("/api/register", async (req, res) => {
@@ -118,12 +113,15 @@ app.post("/api/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid username or password." });
     }
 
-  // Save user information in the session after successful login
-  req.session.user = {
-    id: user.rows[0].id,
-    username: user.rows[0].username,
-  // Add any other user information you want to store in the session
-  };
+    // Save user information in the session after successful login
+    req.session.user = {
+      id: user.rows[0].id,
+      username: user.rows[0].username,
+      // Add any other user information you want to store in the session
+    };
+
+    // Store the session data in the activeSessions object
+    activeSessions[req.sessionID] = req.session;
 
     res.json({ message: "Login successful.", username: user.rows[0].username });
   } catch (error) {
@@ -132,20 +130,49 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+// User Logout
+app.post("/api/logout", (req, res) => {
+  // Remove the session data from the activeSessions object
+  delete activeSessions[req.sessionID];
+
+  // Clear the user session to log the user out
+  req.session.destroy((err) => {
+    if (err) {
+      console.error("Error destroying session:", err);
+    }
+    res.json({ message: "Logged out successfully." });
+  });
+});
+
+// Protected route example
+app.get("/api/protected", requireAuth, (req, res) => {
+  // The user is authenticated, handle the protected route logic here
+  const user = req.session.user;
+  res.json({ message: "This is a protected route." });
+});
+
 // Money Transfer
 app.post("/api/transfer", async (req, res) => {
   const { sender, recipient, amount } = req.body;
   try {
     // Fetch sender and recipient users from the database
-    const senderUser = await pool.query("SELECT * FROM users WHERE username = $1", [sender]);
-    const recipientUser = await pool.query("SELECT * FROM users WHERE username = $1", [recipient]);
+    const senderUser = await pool.query(
+      "SELECT * FROM users WHERE username = $1",
+      [sender]
+    );
+    const recipientUser = await pool.query(
+      "SELECT * FROM users WHERE username = $1",
+      [recipient]
+    );
 
     if (senderUser.rowCount === 0 || recipientUser.rowCount === 0) {
       return res.status(404).json({ error: "Sender or recipient not found." });
     }
 
     if (amount <= 0) {
-      return res.status(400).json({ error: "Amount must be greater than zero." });
+      return res
+        .status(400)
+        .json({ error: "Amount must be greater than zero." });
     }
 
     if (senderUser.rows[0].balance < amount) {
@@ -154,15 +181,20 @@ app.post("/api/transfer", async (req, res) => {
 
     // Perform the money transfer
     await pool.query("BEGIN"); // Start a transaction
-    await pool.query("UPDATE users SET balance = balance - $1 WHERE username = $2", [amount, sender]);
-    await pool.query("UPDATE users SET balance = balance + $1 WHERE username = $2", [amount, recipient]);
+    await pool.query(
+      "UPDATE users SET balance = balance - $1 WHERE username = $2",
+      [amount, sender]
+    );
+    await pool.query(
+      "UPDATE users SET balance = balance + $1 WHERE username = $2",
+      [amount, recipient]
+    );
 
     // Insert a record into the transactions table
-    await pool.query("INSERT INTO transactions (sender_id, recipient_id, amount) VALUES ($1, $2, $3)", [
-      senderUser.rows[0].id,
-      recipientUser.rows[0].id,
-      amount,
-    ]);
+    await pool.query(
+      "INSERT INTO transactions (sender_id, recipient_id, amount) VALUES ($1, $2, $3)",
+      [senderUser.rows[0].id, recipientUser.rows[0].id, amount]
+    );
 
     await pool.query("COMMIT"); // Commit the transaction
 
@@ -311,14 +343,21 @@ app.get("/api/users", async (req, res) => {
 });
 
 // Get the currently logged-in user
-app.get("/api/current-user", requireAuth, (req, res) => {
-  // The user is authenticated, so req.session.user should contain the user information
-  const user = req.session.user;
 
-  // Return the user information as a JSON response
-  res.json({ user });
+app.get("/api/logged-in-users", (req, res) => {
+  const loggedInUsers = Object.values(activeSessions).map(
+    (session) => session.user
+  );
+  res.json(loggedInUsers);
 });
 
+// app.get("/api/current-user", requireAuth, (req, res) => {
+//   // The user is authenticated, so req.session.user should contain the user information
+//   const user = req.session.user;
+
+//   // Return the user information as a JSON response
+//   res.json({ user });
+// });
 
 // Get all withdrawal requests
 app.get("/api/withdrawal-requests", async (req, res) => {
