@@ -184,23 +184,22 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
 
     // Check if the sender is the owner of the request
     const sender = await pool.query(
-      "SELECT * FROM users WHERE username = $1",
-      [request.rows[0].sender]
+      "SELECT * FROM users WHERE id = $1",
+      [req.user.id]
     );
 
     if (sender.rowCount === 0) {
       return res.status(404).json({ error: "Sender not found." });
     }
 
-    if (sender.rows[0].id !== req.user.id) {
-      return res
-        .status(403)
-        .json({ error: "You are not authorized to approve this request." });
+    // Check if the sender is authorized to approve the request
+    if (request.rows[0].user_id !== req.user.id) {
+      return res.status(403).json({ error: "You are not authorized to approve this request." });
     }
 
     // Update the status to 'approved'
     await pool.query(
-      "UPDATE withdrawal_requests SET status = 'approved' WHERE id = $1",
+      "UPDATE withdrawal_requests SET is_approved = true WHERE id = $1",
       [requestId]
     );
 
@@ -210,6 +209,7 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
 
 
 //get methods
@@ -223,6 +223,34 @@ app.get("/api/users", async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
+// Get all withdrawal requests
+app.get("/api/withdrawal-requests", async (req, res) => {
+  try {
+    // Retrieve all withdrawal requests from the database
+    const requests = await pool.query("SELECT * FROM withdrawal_requests");
+
+    res.json(requests.rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
+
+// Get all transactions
+app.get("/api/transactions", async (req, res) => {
+  try {
+    // Retrieve all transactions from the database
+    const transactions = await pool.query("SELECT * FROM transactions");
+
+    res.json(transactions.rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
+
+
 
 // Start the server
 app.listen(PORT, () => {
