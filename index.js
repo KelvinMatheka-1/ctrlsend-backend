@@ -98,6 +98,13 @@ app.post("/api/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid username or password." });
     }
 
+  // Save user information in the session after successful login
+  req.session.user = {
+    id: user.rows[0].id,
+    username: user.rows[0].username,
+  // Add any other user information you want to store in the session
+  };
+
     res.json({ message: "Login successful.", username: user.rows[0].username });
   } catch (error) {
     console.error(error);
