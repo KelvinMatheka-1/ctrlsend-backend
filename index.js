@@ -143,6 +143,7 @@ app.get("/api/protected", requireAuth, (req, res) => {
 });
 
 // Money Transfer
+
 app.post("/api/transfer", async (req, res) => {
   const { sender, recipient, amount } = req.body;
   try {
@@ -170,38 +171,23 @@ app.post("/api/transfer", async (req, res) => {
       return res.status(403).json({ error: "Insufficient funds." });
     }
 
-    // Check if the sender's withdrawal request is approved
-    const withdrawalRequest = await pool.query(
-      "SELECT is_approved FROM withdrawal_requests WHERE user_id = $1 ORDER BY id DESC LIMIT 1",
-      [senderUser.rows[0].id]
-    );
-
-    if (
-      withdrawalRequest.rowCount > 0 &&
-      !withdrawalRequest.rows[0].is_approved
-    ) {
-      return res
-        .status(403)
-        .json({
-          error: "Withdrawal request is not approved. Cannot transfer funds.",
-        });
-    }
-
     // Perform the money transfer
     await pool.query("BEGIN"); // Start a transaction
+
+    // Insert a record into the transactions table with is_pending = true
+    await pool.query(
+      "INSERT INTO transactions (sender_id, recipient_id, amount, is_pending) VALUES ($1, $2, $3, true)",
+      [senderUser.rows[0].id, recipientUser.rows[0].id, amount]
+    );
+
     await pool.query(
       "UPDATE users SET balance = balance - $1 WHERE username = $2",
       [amount, sender]
     );
+
     await pool.query(
       "UPDATE users SET balance = balance + $1 WHERE username = $2",
       [amount, recipient]
-    );
-
-    // Insert a record into the transactions table
-    await pool.query(
-      "INSERT INTO transactions (sender_id, recipient_id, amount) VALUES ($1, $2, $3)",
-      [senderUser.rows[0].id, recipientUser.rows[0].id, amount]
     );
 
     await pool.query("COMMIT"); // Commit the transaction
@@ -213,7 +199,6 @@ app.post("/api/transfer", async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
-
 //withdrawal request
 app.post("/api/withdraw", async (req, res) => {
   const { username, amount } = req.body;
