@@ -19,6 +19,15 @@ app.use(
   })
 );
 
+// Authentication Middleware
+function requireAuth(req, res, next) {
+  if (!req.session.user) {
+    return res.status(401).json({ error: "Unauthorized. User not authenticated." });
+  }
+  // User is authenticated, proceed to the next middleware or route handler
+  next();
+}
+
 // Create a new Pool instance for database connection
 const pool = new Pool({
   user: "kelvin", // Replace with your PostgreSQL username
