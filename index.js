@@ -10,15 +10,6 @@ const PORT = 5000; // Change this to the desired port number
 
 // require("dotenv").config();
 
-// Set up session middleware
-app.use(
-  session({
-    secret: "your-secret-key", // Change this to a secure secret key
-    resave: false,
-    saveUninitialized: false,
-  })
-);
-
 // Authentication Middleware
 function requireAuth(req, res, next) {
   if (!req.session.user) {
@@ -50,6 +41,26 @@ pool.connect((err, client, done) => {
     // Release the client when the app is shut down or when an error occurs
     done();
   }
+});
+
+const session = require("express-session");
+const { v4: uuidv4 } = require("uuid");
+
+
+// Set up session middleware
+app.use(
+  session({
+    secret: uuidv4, // Change this to a secure secret key
+    resave: false,
+    saveUninitialized: false,
+  })
+);
+
+// Protected route example
+app.get("/api/protected", requireAuth, (req, res) => {
+  // The user is authenticated, handle the protected route logic here
+  const user = req.session.user;
+  res.json({ message: "This is a protected route." });
 });
 
 // User Registration
@@ -198,9 +209,9 @@ app.post("/api/withdraw", async (req, res) => {
 //sender approval
 
 app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
-  if (!req.user || !req.user.id) {
-    return res.status(401).json({ error: "Unauthorized. User not authenticated." });
-  }
+  // if (!req.user || !req.user.id) {
+  //   return res.status(401).json({ error: "Unauthorized. User not authenticated." });
+  // }
 
   const { requestId } = req.params;
   try {
@@ -287,6 +298,7 @@ app.patch("/api/reject-withdrawal/:requestId", async (req, res) => {
 });
 
 //get methods
+
 // Get All Users
 app.get("/api/users", async (req, res) => {
   try {
@@ -297,6 +309,16 @@ app.get("/api/users", async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
+// Get the currently logged-in user
+app.get("/api/current-user", requireAuth, (req, res) => {
+  // The user is authenticated, so req.session.user should contain the user information
+  const user = req.session.user;
+
+  // Return the user information as a JSON response
+  res.json({ user });
+});
+
 
 // Get all withdrawal requests
 app.get("/api/withdrawal-requests", async (req, res) => {
