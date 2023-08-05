@@ -210,6 +210,51 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
   }
 });
 
+//Reject the request
+
+app.patch("/api/reject-withdrawal/:requestId", async (req, res) => {
+  const { requestId } = req.params;
+  try {
+    // Check if the request exists
+    const request = await pool.query(
+      "SELECT * FROM withdrawal_requests WHERE id = $1",
+      [requestId]
+    );
+
+    if (request.rowCount === 0) {
+      return res.status(404).json({ error: "Withdrawal request not found." });
+    }
+
+    // Check if the sender is the owner of the request
+    const sender = await pool.query(
+      "SELECT * FROM users WHERE username = $1",
+      [request.rows[0].sender]
+    );
+
+    if (sender.rowCount === 0) {
+      return res.status(404).json({ error: "Sender not found." });
+    }
+
+    if (sender.rows[0].id !== req.user.id) {
+      return res
+        .status(403)
+        .json({ error: "You are not authorized to reject this request." });
+    }
+
+    // Update the status to 'rejected'
+    await pool.query(
+      "UPDATE withdrawal_requests SET status = 'rejected' WHERE id = $1",
+      [requestId]
+    );
+
+    res.json({ message: "Withdrawal request rejected successfully." });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
+
+
 
 
 //get methods
