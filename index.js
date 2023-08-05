@@ -245,26 +245,16 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
       return res.status(404).json({ error: "Withdrawal request not found." });
     }
 
-    // Fetch the sender and recipient users from the database
-    const senderUser = await pool.query(
-      "SELECT * FROM users WHERE id = $1",
-      [request.rows[0].sender_id]
-    );
-
-    const recipientUser = await pool.query(
-      "SELECT * FROM users WHERE id = $1",
-      [request.rows[0].user_id]
-    );
-
-    if (senderUser.rowCount === 0 || recipientUser.rowCount === 0) {
-      return res.status(404).json({ error: "Sender or recipient not found." });
-    }
-
     // Check if the sender is authorized to approve the request
-    if (senderUser.rows[0].id !== req.session.user.id) {
+    if (request.rows[0].sender_id !== req.session.user.id) {
       return res
         .status(403)
         .json({ error: "You are not authorized to approve this request." });
+    }
+
+    // Check if the request is already approved
+    if (request.rows[0].is_approved) {
+      return res.status(400).json({ error: "Request is already approved." });
     }
 
     // Update the status to 'approved'
@@ -276,11 +266,26 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
     // Get the requested amount from the withdrawal request
     const requestedAmount = request.rows[0].amount;
 
-    // Deduct the requested amount from the sender's balance
-    await pool.query("UPDATE users SET balance = balance - $1 WHERE id = $2", [
-      requestedAmount,
-      request.rows[0].sender_id,
-    ]);
+    // Get the user's balance
+    const user = await pool.query(
+      "SELECT * FROM users WHERE id = $1 FOR UPDATE",
+      [request.rows[0].user_id]
+    );
+
+    if (user.rowCount === 0) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    // Check if the user has enough balance to withdraw
+    if (user.rows[0].balance < requestedAmount) {
+      return res.status(403).json({ error: "Insufficient funds." });
+    }
+
+    // Deduct the requested amount from the user's balance
+    await pool.query(
+      "UPDATE users SET balance = balance - $1 WHERE id = $2",
+      [requestedAmount, request.rows[0].user_id]
+    );
 
     // Update the status of the withdrawal request to 'approved'
     await pool.query(
@@ -288,12 +293,16 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
       [requestId]
     );
 
+    await pool.query("COMMIT"); // Commit the transaction
+
     res.json({ message: "Withdrawal request approved successfully." });
   } catch (error) {
+    await pool.query("ROLLBACK"); // Rollback the transaction on error
     console.error(error);
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
 
 
 //Reject the request
