@@ -256,6 +256,49 @@ app.post("/api/transfer", async (req, res) => {
   }
 });
 
+// Withdrawal request for immediate funds
+app.post("/api/withdraw-immediate-funds", async (req, res) => {
+  const { username, amount } = req.body;
+  try {
+    // Check if the user exists in the database
+    const user = await pool.query("SELECT * FROM users WHERE username = $1", [
+      username,
+    ]);
+
+    if (user.rowCount === 0) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    if (amount <= 0) {
+      return res
+        .status(400)
+        .json({ error: "Withdrawal amount must be greater than zero." });
+    }
+
+    // Check if the user has enough balance to withdraw
+    if (user.rows[0].balance < amount) {
+      return res.status(403).json({ error: "Insufficient funds." });
+    }
+
+    // Store the withdrawal request in the database
+    await pool.query(
+      "INSERT INTO withdrawal_requests (user_id, amount, is_approved) VALUES ($1, $2, true)",
+      [user.rows[0].id, amount]
+    );
+
+    // Deduct the requested amount from the user's balance
+    await pool.query("UPDATE users SET balance = balance - $1 WHERE id = $2", [
+      amount,
+      user.rows[0].id,
+    ]);
+
+    res.json({ message: "Withdrawal request for immediate funds sent successfully." });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
+
 //locked withdrawal request
 app.post("/api/withdraw", async (req, res) => {
   const { username, amount } = req.body;
