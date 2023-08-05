@@ -170,6 +170,23 @@ app.post("/api/transfer", async (req, res) => {
       return res.status(403).json({ error: "Insufficient funds." });
     }
 
+    // Check if the sender's withdrawal request is approved
+    const withdrawalRequest = await pool.query(
+      "SELECT is_approved FROM withdrawal_requests WHERE user_id = $1 ORDER BY id DESC LIMIT 1",
+      [senderUser.rows[0].id]
+    );
+
+    if (
+      withdrawalRequest.rowCount > 0 &&
+      !withdrawalRequest.rows[0].is_approved
+    ) {
+      return res
+        .status(403)
+        .json({
+          error: "Withdrawal request is not approved. Cannot transfer funds.",
+        });
+    }
+
     // Perform the money transfer
     await pool.query("BEGIN"); // Start a transaction
     await pool.query(
@@ -260,10 +277,9 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
     const requestedAmount = request.rows[0].amount;
 
     // Get the user's balance
-    const user = await pool.query(
-      "SELECT * FROM users WHERE id = $1",
-      [request.rows[0].user_id]
-    );
+    const user = await pool.query("SELECT * FROM users WHERE id = $1", [
+      request.rows[0].user_id,
+    ]);
 
     if (user.rowCount === 0) {
       return res.status(404).json({ error: "User not found." });
@@ -275,10 +291,10 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
     }
 
     // Deduct the requested amount from the user's balance
-    await pool.query(
-      "UPDATE users SET balance = balance - $1 WHERE id = $2",
-      [requestedAmount, request.rows[0].user_id]
-    );
+    await pool.query("UPDATE users SET balance = balance - $1 WHERE id = $2", [
+      requestedAmount,
+      request.rows[0].user_id,
+    ]);
 
     // Update the status of the withdrawal request to 'approved'
     await pool.query(
@@ -292,7 +308,6 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
-
 
 //Reject the request
 app.patch("/api/reject-withdrawal/:requestId", async (req, res) => {
