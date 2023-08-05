@@ -10,7 +10,7 @@ const app = express();
 const PORT = 5000; // Change this to the desired port number
 
 // Custom object to store active sessions
-const activeSessions = {};
+let activeSessions = [];
 
 // require("dotenv").config();
 
@@ -120,8 +120,8 @@ app.post("/api/login", async (req, res) => {
       // Add any other user information you want to store in the session
     };
 
-    // Store the session data in the activeSessions object
-    activeSessions[req.sessionID] = req.session;
+    // Push the session into the array of logged-in users
+    activeSessions.push(req.session);
 
     res.json({ message: "Login successful.", username: user.rows[0].username });
   } catch (error) {
@@ -132,8 +132,10 @@ app.post("/api/login", async (req, res) => {
 
 // User Logout
 app.post("/api/logout", (req, res) => {
-  // Remove the session data from the activeSessions object
-  delete activeSessions[req.sessionID];
+  // Remove the session from the array of logged-in users
+  activeSessions = activeSessions.filter(
+    (session) => session.id !== req.session.id
+  );
 
   // Clear the user session to log the user out
   req.session.destroy((err) => {
@@ -345,9 +347,7 @@ app.get("/api/users", async (req, res) => {
 // Get the currently logged-in user
 
 app.get("/api/logged-in-users", (req, res) => {
-  const loggedInUsers = Object.values(activeSessions).map(
-    (session) => session.user
-  );
+  const loggedInUsers = activeSessions.map((session) => session.user);
   res.json(loggedInUsers);
 });
 
