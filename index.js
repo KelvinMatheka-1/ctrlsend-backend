@@ -142,7 +142,66 @@ app.get("/api/protected", requireAuth, (req, res) => {
   res.json({ message: "This is a protected route." });
 });
 
-// Money Transfer
+// Immediate Money Transfer
+app.post("/api/immediate-transfer", async (req, res) => {
+  const { sender, recipient, amount } = req.body;
+  try {
+    // Fetch sender and recipient users from the database
+    const senderUser = await pool.query(
+      "SELECT * FROM users WHERE username = $1",
+      [sender]
+    );
+    const recipientUser = await pool.query(
+      "SELECT * FROM users WHERE username = $1",
+      [recipient]
+    );
+
+    if (senderUser.rowCount === 0 || recipientUser.rowCount === 0) {
+      return res.status(404).json({ error: "Sender or recipient not found." });
+    }
+
+    if (amount <= 0) {
+      return res
+        .status(400)
+        .json({ error: "Amount must be greater than zero." });
+    }
+
+    if (senderUser.rows[0].balance < amount) {
+      return res.status(403).json({ error: "Insufficient funds." });
+    }
+
+    // Perform the immediate money transfer
+    await pool.query("BEGIN"); // Start a transaction
+    await pool.query(
+      "UPDATE users SET balance = balance - $1 WHERE username = $2",
+      [amount, sender]
+    );
+    await pool.query(
+      "UPDATE users SET balance = balance + $1 WHERE username = $2",
+      [amount, recipient]
+    );
+
+    // Insert a record into the transactions table
+    await pool.query(
+      "INSERT INTO transactions (sender_id, recipient_id, amount) VALUES ($1, $2, $3)",
+      [senderUser.rows[0].id, recipientUser.rows[0].id, amount]
+    );
+
+    // Update recipient's balance after the transfer
+    recipientUser.rows[0].balance += amount;
+
+    await pool.query("COMMIT"); // Commit the transaction
+
+    res.json({ message: "Immediate money transferred successfully." });
+  } catch (error) {
+    await pool.query("ROLLBACK"); // Rollback the transaction on error
+    console.error(error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
+
+
+// locked Money Transfer
 app.post("/api/transfer", async (req, res) => {
   const { sender, recipient, amount } = req.body;
   try {
@@ -197,7 +256,7 @@ app.post("/api/transfer", async (req, res) => {
   }
 });
 
-//withdrawal request
+//locked withdrawal request
 app.post("/api/withdraw", async (req, res) => {
   const { username, amount } = req.body;
   try {
