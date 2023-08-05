@@ -55,14 +55,16 @@ app.post("/api/register", async (req, res) => {
     // Store the new user in the database
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = await pool.query(
-      'INSERT INTO users (username, email, password) VALUES ($1, $2, $3) RETURNING *',
+      "INSERT INTO users (username, email, password) VALUES ($1, $2, $3) RETURNING *",
       [username, email, hashedPassword]
     );
 
     res.json(newUser.rows[0]);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "An error occurred while registering the user." });
+    res
+      .status(500)
+      .json({ error: "An error occurred while registering the user." });
   }
 });
 
@@ -70,16 +72,18 @@ app.post("/api/register", async (req, res) => {
 app.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
   try {
-    const user = await pool.query(
-      "SELECT * FROM users WHERE username = $1",
-      [username]
-    );
+    const user = await pool.query("SELECT * FROM users WHERE username = $1", [
+      username,
+    ]);
 
     if (user.rowCount === 0) {
       return res.status(401).json({ error: "Invalid username or password." });
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.rows[0].password);
+    const isPasswordValid = await bcrypt.compare(
+      password,
+      user.rows[0].password
+    );
     if (!isPasswordValid) {
       return res.status(401).json({ error: "Invalid username or password." });
     }
@@ -95,23 +99,16 @@ app.post("/api/login", async (req, res) => {
 app.post("/api/transfer", async (req, res) => {
   const { sender, recipient, amount } = req.body;
   try {
-    const senderUser = await pool.query(
-      "SELECT * FROM users WHERE username = $1",
-      [sender]
-    );
-    const recipientUser = await pool.query(
-      "SELECT * FROM users WHERE username = $1",
-      [recipient]
-    );
+    // Fetch sender and recipient users from the database
+    const senderUser = await pool.query("SELECT * FROM users WHERE username = $1", [sender]);
+    const recipientUser = await pool.query("SELECT * FROM users WHERE username = $1", [recipient]);
 
     if (senderUser.rowCount === 0 || recipientUser.rowCount === 0) {
       return res.status(404).json({ error: "Sender or recipient not found." });
     }
 
     if (amount <= 0) {
-      return res
-        .status(400)
-        .json({ error: "Amount must be greater than zero." });
+      return res.status(400).json({ error: "Amount must be greater than zero." });
     }
 
     if (senderUser.rows[0].balance < amount) {
@@ -119,17 +116,22 @@ app.post("/api/transfer", async (req, res) => {
     }
 
     // Perform the money transfer
-    await pool.query(
-      "UPDATE users SET balance = balance - $1 WHERE username = $2",
-      [amount, sender]
-    );
-    await pool.query(
-      "UPDATE users SET balance = balance + $1 WHERE username = $2",
-      [amount, recipient]
-    );
+    await pool.query("BEGIN"); // Start a transaction
+    await pool.query("UPDATE users SET balance = balance - $1 WHERE username = $2", [amount, sender]);
+    await pool.query("UPDATE users SET balance = balance + $1 WHERE username = $2", [amount, recipient]);
+
+    // Insert a record into the transactions table
+    await pool.query("INSERT INTO transactions (sender_id, recipient_id, amount) VALUES ($1, $2, $3)", [
+      senderUser.rows[0].id,
+      recipientUser.rows[0].id,
+      amount,
+    ]);
+
+    await pool.query("COMMIT"); // Commit the transaction
 
     res.json({ message: "Money transferred successfully." });
   } catch (error) {
+    await pool.query("ROLLBACK"); // Rollback the transaction on error
     console.error(error);
     res.status(500).json({ error: "Internal server error." });
   }
@@ -183,10 +185,9 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
     }
 
     // Check if the sender is the owner of the request
-    const sender = await pool.query(
-      "SELECT * FROM users WHERE id = $1",
-      [req.user.id]
-    );
+    const sender = await pool.query("SELECT * FROM users WHERE id = $1", [
+      req.user.id,
+    ]);
 
     if (sender.rowCount === 0) {
       return res.status(404).json({ error: "Sender not found." });
@@ -194,7 +195,9 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
 
     // Check if the sender is authorized to approve the request
     if (request.rows[0].user_id !== req.user.id) {
-      return res.status(403).json({ error: "You are not authorized to approve this request." });
+      return res
+        .status(403)
+        .json({ error: "You are not authorized to approve this request." });
     }
 
     // Update the status to 'approved'
@@ -226,10 +229,9 @@ app.patch("/api/reject-withdrawal/:requestId", async (req, res) => {
     }
 
     // Check if the sender is the owner of the request
-    const sender = await pool.query(
-      "SELECT * FROM users WHERE username = $1",
-      [request.rows[0].sender]
-    );
+    const sender = await pool.query("SELECT * FROM users WHERE username = $1", [
+      request.rows[0].sender,
+    ]);
 
     if (sender.rowCount === 0) {
       return res.status(404).json({ error: "Sender not found." });
@@ -253,9 +255,6 @@ app.patch("/api/reject-withdrawal/:requestId", async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
-
-
-
 
 //get methods
 // Get All Users
@@ -294,8 +293,6 @@ app.get("/api/transactions", async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
-
-
 
 // Start the server
 app.listen(PORT, () => {
