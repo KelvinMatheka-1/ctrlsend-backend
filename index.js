@@ -143,7 +143,6 @@ app.get("/api/protected", requireAuth, (req, res) => {
 });
 
 // Money Transfer
-
 app.post("/api/transfer", async (req, res) => {
   const { sender, recipient, amount } = req.body;
   try {
@@ -173,21 +172,19 @@ app.post("/api/transfer", async (req, res) => {
 
     // Perform the money transfer
     await pool.query("BEGIN"); // Start a transaction
-
-    // Insert a record into the transactions table with is_pending = true
-    await pool.query(
-      "INSERT INTO transactions (sender_id, recipient_id, amount, is_pending) VALUES ($1, $2, $3, true)",
-      [senderUser.rows[0].id, recipientUser.rows[0].id, amount]
-    );
-
     await pool.query(
       "UPDATE users SET balance = balance - $1 WHERE username = $2",
       [amount, sender]
     );
-
     await pool.query(
       "UPDATE users SET balance = balance + $1 WHERE username = $2",
       [amount, recipient]
+    );
+
+    // Insert a record into the transactions table
+    await pool.query(
+      "INSERT INTO transactions (sender_id, recipient_id, amount) VALUES ($1, $2, $3)",
+      [senderUser.rows[0].id, recipientUser.rows[0].id, amount]
     );
 
     await pool.query("COMMIT"); // Commit the transaction
@@ -199,6 +196,7 @@ app.post("/api/transfer", async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
 //withdrawal request
 app.post("/api/withdraw", async (req, res) => {
   const { username, amount } = req.body;
@@ -219,9 +217,10 @@ app.post("/api/withdraw", async (req, res) => {
     }
 
     // Store the withdrawal request in the database
+    // Set the sender_id to the currently authenticated user's id
     await pool.query(
-      "INSERT INTO withdrawal_requests (user_id, amount) VALUES ($1, $2)",
-      [recipientUser.rows[0].id, amount]
+      "INSERT INTO withdrawal_requests (user_id, sender_id, amount) VALUES ($1, $2, $3)",
+      [recipientUser.rows[0].id, req.session.user.id, amount]
     );
 
     res.json({ message: "Withdrawal request sent successfully." });
@@ -231,7 +230,8 @@ app.post("/api/withdraw", async (req, res) => {
   }
 });
 
-// Sender approval
+
+//sender approval
 app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
   const { requestId } = req.params;
   try {
@@ -245,8 +245,23 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
       return res.status(404).json({ error: "Withdrawal request not found." });
     }
 
+    // Fetch the sender and recipient users from the database
+    const senderUser = await pool.query(
+      "SELECT * FROM users WHERE id = $1",
+      [request.rows[0].sender_id]
+    );
+
+    const recipientUser = await pool.query(
+      "SELECT * FROM users WHERE id = $1",
+      [request.rows[0].user_id]
+    );
+
+    if (senderUser.rowCount === 0 || recipientUser.rowCount === 0) {
+      return res.status(404).json({ error: "Sender or recipient not found." });
+    }
+
     // Check if the sender is authorized to approve the request
-    if (request.rows[0].user_id !== req.session.user.id) {
+    if (senderUser.rows[0].id !== req.session.user.id) {
       return res
         .status(403)
         .json({ error: "You are not authorized to approve this request." });
@@ -261,24 +276,10 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
     // Get the requested amount from the withdrawal request
     const requestedAmount = request.rows[0].amount;
 
-    // Get the user's balance
-    const user = await pool.query("SELECT * FROM users WHERE id = $1", [
-      request.rows[0].user_id,
-    ]);
-
-    if (user.rowCount === 0) {
-      return res.status(404).json({ error: "User not found." });
-    }
-
-    // Check if the user has enough balance to withdraw
-    if (user.rows[0].balance < requestedAmount) {
-      return res.status(403).json({ error: "Insufficient funds." });
-    }
-
-    // Deduct the requested amount from the user's balance
+    // Deduct the requested amount from the sender's balance
     await pool.query("UPDATE users SET balance = balance - $1 WHERE id = $2", [
       requestedAmount,
-      request.rows[0].user_id,
+      request.rows[0].sender_id,
     ]);
 
     // Update the status of the withdrawal request to 'approved'
@@ -293,6 +294,7 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
 
 //Reject the request
 app.patch("/api/reject-withdrawal/:requestId", async (req, res) => {
