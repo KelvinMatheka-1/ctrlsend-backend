@@ -132,41 +132,56 @@ app.get("/api/protected", requireAuth, (req, res) => {
 
 // Immediate Money Transfer
 app.post("/api/immediate-transfer", requireAuth, async (req, res) => {
-  const { sender, recipient, amount } = req.body;
+  const { recipient, amount } = req.body;
   try {
-    // Fetch sender and recipient users from the database
-    const senderUser = await db("users").where("username", sender).first();
+    // Fetch recipient user from the database
     const recipientUser = await db("users").where("username", recipient).first();
 
-    if (!senderUser || !recipientUser) {
-      return res.status(404).json({ error: "Sender or recipient not found." });
+    if (!recipientUser) {
+      return res.status(404).json({ error: "Recipient not found." });
     }
 
     if (amount <= 0) {
       return res.status(400).json({ error: "Amount must be greater than zero." });
     }
 
+    // Check if the sender has enough immediate balance to make the transfer
+    const senderUser = await db("users")
+      .where("id", req.session.user.id)
+      .first();
+
+    if (!senderUser) {
+      return res.status(404).json({ error: "Sender not found." });
+    }
+
     if (senderUser.immediate_balance < amount) {
       return res.status(403).json({ error: "Insufficient immediate funds." });
+    }
+
+    // Check if the sender is trying to transfer from their own account
+    if (recipientUser.id === req.session.user.id) {
+      return res
+        .status(403)
+        .json({ error: "You cannot transfer funds to your own account." });
     }
 
     // Perform the immediate money transfer
     await db.transaction(async (trx) => {
       // Deduct amount from sender's immediate balance
       await db("users")
-        .where("username", sender)
+        .where("id", req.session.user.id)
         .decrement("immediate_balance", amount)
         .transacting(trx);
 
       // Add amount to recipient's immediate balance
       await db("users")
-        .where("username", recipient)
+        .where("id", recipientUser.id)
         .increment("immediate_balance", amount)
         .transacting(trx);
 
       // Insert a record into the transactions table
       await db("transactions").insert({
-        sender_id: senderUser.id,
+        sender_id: req.session.user.id,
         recipient_id: recipientUser.id,
         amount,
       });
@@ -179,43 +194,59 @@ app.post("/api/immediate-transfer", requireAuth, async (req, res) => {
   }
 });
 
+
 // Locked Money Transfer
 app.post("/api/transfer", requireAuth, async (req, res) => {
-  const { sender, recipient, amount } = req.body;
+  const { recipient, amount } = req.body;
   try {
-    // Fetch sender and recipient users from the database
-    const senderUser = await db("users").where("username", sender).first();
+    // Fetch recipient user from the database
     const recipientUser = await db("users").where("username", recipient).first();
 
-    if (!senderUser || !recipientUser) {
-      return res.status(404).json({ error: "Sender or recipient not found." });
+    if (!recipientUser) {
+      return res.status(404).json({ error: "Recipient not found." });
     }
 
     if (amount <= 0) {
       return res.status(400).json({ error: "Amount must be greater than zero." });
     }
 
+    // Check if the sender has enough locked balance to make the transfer
+    const senderUser = await db("users")
+      .where("id", req.session.user.id)
+      .first();
+
+    if (!senderUser) {
+      return res.status(404).json({ error: "Sender not found." });
+    }
+
     if (senderUser.locked_balance < amount) {
       return res.status(403).json({ error: "Insufficient locked funds." });
+    }
+
+    // Check if the sender is trying to transfer from their own account
+    if (recipientUser.id === req.session.user.id) {
+      return res
+        .status(403)
+        .json({ error: "You cannot transfer funds to your own account." });
     }
 
     // Perform the money transfer
     await db.transaction(async (trx) => {
       // Deduct amount from sender's locked balance
       await db("users")
-        .where("username", sender)
+        .where("id", req.session.user.id)
         .decrement("locked_balance", amount)
         .transacting(trx);
 
       // Add amount to recipient's locked balance
       await db("users")
-        .where("username", recipient)
+        .where("id", recipientUser.id)
         .increment("locked_balance", amount)
         .transacting(trx);
 
       // Insert a record into the transactions table
       await db("transactions").insert({
-        sender_id: senderUser.id,
+        sender_id: req.session.user.id,
         recipient_id: recipientUser.id,
         amount,
       });
@@ -227,6 +258,8 @@ app.post("/api/transfer", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
+
 
 // Withdrawal request for immediate funds
 app.post("/api/withdraw-immediate-funds", requireAuth, async (req, res) => {
@@ -249,6 +282,11 @@ app.post("/api/withdraw-immediate-funds", requireAuth, async (req, res) => {
       return res.status(403).json({ error: "Insufficient immediate funds." });
     }
 
+    // Ensure that the logged-in user is the same as the user trying to withdraw funds
+    if (req.session.user.username !== username) {
+      return res.status(403).json({ error: "You are not authorized to withdraw funds for this user." });
+    }
+
     // Store the withdrawal request in the database
     // await db("withdrawal_requests").insert({
     //   user_id: user.id,
@@ -266,11 +304,13 @@ app.post("/api/withdraw-immediate-funds", requireAuth, async (req, res) => {
   }
 });
 
+
+
 // Locked withdrawal request
 app.post("/api/withdraw", requireAuth, async (req, res) => {
   const { username, amount } = req.body;
   try {
-    // Fetch sender and recipient users from the database
+    // Fetch recipient user from the database
     const recipientUser = await db("users").where("username", username).first();
     const senderUser = await db("users").where("id", req.session.user.id).first();
 
@@ -282,6 +322,11 @@ app.post("/api/withdraw", requireAuth, async (req, res) => {
       return res
         .status(400)
         .json({ error: "Withdrawal amount must be greater than zero." });
+    }
+
+    // Check if the sender and recipient are the same as the logged-in user
+    if (req.session.user.username !== username) {
+      return res.status(403).json({ error: "You are not authorized to withdraw funds for this user." });
     }
 
     // Check if the sender has enough locked balance to make the withdrawal
@@ -311,6 +356,58 @@ app.post("/api/withdraw", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
+// Sender approval for withdrawal request
+app.post("/api/approve-withdrawal/:requestId", requireAuth, async (req, res) => {
+  const { requestId } = req.params;
+  try {
+    // Fetch the withdrawal request from the database
+    const request = await db("withdrawal_requests")
+      .where("id", requestId)
+      .first();
+
+    if (!request) {
+      return res.status(404).json({ error: "Withdrawal request not found." });
+    }
+
+    // Fetch the sender user from the database
+    const senderUser = await db("users")
+      .where("id", request.sender_id)
+      .first();
+
+    if (!senderUser) {
+      return res.status(404).json({ error: "Sender not found." });
+    }
+
+    // Check if the currently logged-in user is the sender of the money
+    if (senderUser.id !== req.session.user.id) {
+      return res
+        .status(403)
+        .json({ error: "You are not authorized to approve this request." });
+    }
+
+    // Check if the request is already approved
+    if (request.is_approved) {
+      return res.status(400).json({ error: "The request is already approved." });
+    }
+
+    // Update the status to 'approved'
+    await db("withdrawal_requests").where("id", requestId).update({
+      is_approved: true,
+    });
+
+    // Deduct the approved amount from the user's locked balance
+    await db("users")
+      .where("id", request.user_id)
+      .decrement("locked_balance", request.amount);
+
+    res.json({ message: "Withdrawal request approved successfully." });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
+
 
 
 // Reject the request
@@ -374,6 +471,7 @@ app.get("/api/withdrawal-requests", async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
 
 // Get all transactions
 app.get("/api/transactions", async (req, res) => {
