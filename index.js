@@ -1,15 +1,47 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
-const { Pool } = require("pg");
 const bcrypt = require("bcrypt");
 const session = require("express-session");
 const { v4: uuidv4 } = require("uuid");
+const knex = require("knex");
 
 const app = express();
 const PORT = 5000; // Change this to the desired port number
 
-// require("dotenv").config();
+// Knex configuration
+const db = knex({
+  client: "pg",
+  connection: {
+    host: "localhost",
+    user: "kelvin",
+    password: "Omarionconor2",
+    database: "ctrlsend",
+    port: 5432,
+  },
+});
+
+// Middleware
+app.use(bodyParser.json());
+app.use(cors());
+
+// Test the database connection
+db.raw("SELECT 1")
+  .then(() => {
+    console.log("Connected to PostgreSQL database!");
+  })
+  .catch((err) => {
+    console.error("Error connecting to PostgreSQL:", err.message);
+  });
+
+// Set up session middleware
+app.use(
+  session({
+    secret: uuidv4(), // Change this to a secure secret key
+    resave: false,
+    saveUninitialized: false,
+  })
+);
 
 // Authentication Middleware
 function requireAuth(req, res, next) {
@@ -22,39 +54,6 @@ function requireAuth(req, res, next) {
   next();
 }
 
-// Create a new Pool instance for database connection
-const pool = new Pool({
-  user: "kelvin", // Replace with your PostgreSQL username
-  password: "Omarionconor2", // Replace with your PostgreSQL password
-  host: "localhost", // Replace with your PostgreSQL server address if it's not running locally
-  database: "ctrlsend", // Replace with the name of your PostgreSQL database
-  port: 5432, // Change this if your PostgreSQL server uses a different port
-});
-
-// Middleware
-app.use(bodyParser.json());
-app.use(cors());
-
-// Test the database connection
-pool.connect((err, client, done) => {
-  if (err) {
-    console.error("Error connecting to PostgreSQL:", err.message);
-  } else {
-    console.log("Connected to PostgreSQL database!");
-    // Release the client when the app is shut down or when an error occurs
-    done();
-  }
-});
-
-// Set up session middleware
-app.use(
-  session({
-    secret: uuidv4(), // Change this to a secure secret key
-    resave: false,
-    saveUninitialized: false,
-  })
-);
-
 // User Registration
 app.post("/api/register", async (req, res) => {
   const { username, email, password } = req.body;
@@ -66,27 +65,21 @@ app.post("/api/register", async (req, res) => {
 
   try {
     // Check if the user already exists in the database
-    const existingUser = await pool.query(
-      "SELECT * FROM users WHERE username = $1",
-      [username]
-    );
-    if (existingUser.rowCount > 0) {
+    const existingUser = await db("users").where("username", username).first();
+    if (existingUser) {
       return res.status(409).json({ error: "User already exists." });
     }
 
     // Store the new user in the database
     const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = await pool.query(
-      "INSERT INTO users (username, email, password) VALUES ($1, $2, $3) RETURNING *",
-      [username, email, hashedPassword]
-    );
+    const newUser = await db("users")
+      .insert({ username, email, password: hashedPassword })
+      .returning("*");
 
-    res.json(newUser.rows[0]);
+    res.json(newUser[0]);
   } catch (error) {
     console.error(error);
-    res
-      .status(500)
-      .json({ error: "An error occurred while registering the user." });
+    res.status(500).json({ error: "An error occurred while registering the user." });
   }
 });
 
@@ -94,30 +87,25 @@ app.post("/api/register", async (req, res) => {
 app.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
   try {
-    const user = await pool.query("SELECT * FROM users WHERE username = $1", [
-      username,
-    ]);
+    const user = await db("users").where("username", username).first();
 
-    if (user.rowCount === 0) {
+    if (!user) {
       return res.status(401).json({ error: "Invalid username or password." });
     }
 
-    const isPasswordValid = await bcrypt.compare(
-      password,
-      user.rows[0].password
-    );
+    const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return res.status(401).json({ error: "Invalid username or password." });
     }
 
     // Save user information in the session after successful login
     req.session.user = {
-      id: user.rows[0].id,
-      username: user.rows[0].username,
+      id: user.id,
+      username: user.username,
       // Add any other user information you want to store in the session
     };
 
-    res.json({ message: "Login successful.", username: user.rows[0].username });
+    res.json({ message: "Login successful.", username: user.username });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal server error." });
@@ -147,110 +135,94 @@ app.post("/api/immediate-transfer", async (req, res) => {
   const { sender, recipient, amount } = req.body;
   try {
     // Fetch sender and recipient users from the database
-    const senderUser = await pool.query(
-      "SELECT * FROM users WHERE username = $1",
-      [sender]
-    );
-    const recipientUser = await pool.query(
-      "SELECT * FROM users WHERE username = $1",
-      [recipient]
-    );
+    const senderUser = await db("users").where("username", sender).first();
+    const recipientUser = await db("users").where("username", recipient).first();
 
-    if (senderUser.rowCount === 0 || recipientUser.rowCount === 0) {
+    if (!senderUser || !recipientUser) {
       return res.status(404).json({ error: "Sender or recipient not found." });
     }
 
     if (amount <= 0) {
-      return res
-        .status(400)
-        .json({ error: "Amount must be greater than zero." });
+      return res.status(400).json({ error: "Amount must be greater than zero." });
     }
 
-    if (senderUser.rows[0].balance < amount) {
-      return res.status(403).json({ error: "Insufficient funds." });
+    if (senderUser.immediate_balance < amount) {
+      return res.status(403).json({ error: "Insufficient immediate funds." });
     }
 
     // Perform the immediate money transfer
-    await pool.query("BEGIN"); // Start a transaction
-    await pool.query(
-      "UPDATE users SET balance = balance - $1 WHERE username = $2",
-      [amount, sender]
-    );
-    await pool.query(
-      "UPDATE users SET balance = balance + $1 WHERE username = $2",
-      [amount, recipient]
-    );
+    await db.transaction(async (trx) => {
+      // Deduct amount from sender's immediate balance
+      await db("users")
+        .where("username", sender)
+        .decrement("immediate_balance", amount)
+        .transacting(trx);
 
-    // Insert a record into the transactions table
-    await pool.query(
-      "INSERT INTO transactions (sender_id, recipient_id, amount) VALUES ($1, $2, $3)",
-      [senderUser.rows[0].id, recipientUser.rows[0].id, amount]
-    );
+      // Add amount to recipient's immediate balance
+      await db("users")
+        .where("username", recipient)
+        .increment("immediate_balance", amount)
+        .transacting(trx);
 
-    // Update recipient's balance after the transfer
-    recipientUser.rows[0].balance += amount;
-
-    await pool.query("COMMIT"); // Commit the transaction
+      // Insert a record into the transactions table
+      await db("transactions").insert({
+        sender_id: senderUser.id,
+        recipient_id: recipientUser.id,
+        amount,
+      });
+    });
 
     res.json({ message: "Immediate money transferred successfully." });
   } catch (error) {
-    await pool.query("ROLLBACK"); // Rollback the transaction on error
     console.error(error);
     res.status(500).json({ error: "Internal server error." });
   }
 });
 
-
-// locked Money Transfer
+// Locked Money Transfer
 app.post("/api/transfer", async (req, res) => {
   const { sender, recipient, amount } = req.body;
   try {
     // Fetch sender and recipient users from the database
-    const senderUser = await pool.query(
-      "SELECT * FROM users WHERE username = $1",
-      [sender]
-    );
-    const recipientUser = await pool.query(
-      "SELECT * FROM users WHERE username = $1",
-      [recipient]
-    );
+    const senderUser = await db("users").where("username", sender).first();
+    const recipientUser = await db("users").where("username", recipient).first();
 
-    if (senderUser.rowCount === 0 || recipientUser.rowCount === 0) {
+    if (!senderUser || !recipientUser) {
       return res.status(404).json({ error: "Sender or recipient not found." });
     }
 
     if (amount <= 0) {
-      return res
-        .status(400)
-        .json({ error: "Amount must be greater than zero." });
+      return res.status(400).json({ error: "Amount must be greater than zero." });
     }
 
-    if (senderUser.rows[0].balance < amount) {
-      return res.status(403).json({ error: "Insufficient funds." });
+    if (senderUser.approved_balance < amount) {
+      return res.status(403).json({ error: "Insufficient locked funds." });
     }
 
     // Perform the money transfer
-    await pool.query("BEGIN"); // Start a transaction
-    await pool.query(
-      "UPDATE users SET balance = balance - $1 WHERE username = $2",
-      [amount, sender]
-    );
-    await pool.query(
-      "UPDATE users SET balance = balance + $1 WHERE username = $2",
-      [amount, recipient]
-    );
+    await db.transaction(async (trx) => {
+      // Deduct amount from sender's approved balance
+      await db("users")
+        .where("username", sender)
+        .decrement("approved_balance", amount)
+        .transacting(trx);
 
-    // Insert a record into the transactions table
-    await pool.query(
-      "INSERT INTO transactions (sender_id, recipient_id, amount) VALUES ($1, $2, $3)",
-      [senderUser.rows[0].id, recipientUser.rows[0].id, amount]
-    );
+      // Add amount to recipient's approved balance
+      await db("users")
+        .where("username", recipient)
+        .increment("approved_balance", amount)
+        .transacting(trx);
 
-    await pool.query("COMMIT"); // Commit the transaction
+      // Insert a record into the transactions table
+      await db("transactions").insert({
+        sender_id: senderUser.id,
+        recipient_id: recipientUser.id,
+        amount,
+      });
+    });
 
     res.json({ message: "Money transferred successfully." });
   } catch (error) {
-    await pool.query("ROLLBACK"); // Rollback the transaction on error
     console.error(error);
     res.status(500).json({ error: "Internal server error." });
   }
@@ -261,11 +233,9 @@ app.post("/api/withdraw-immediate-funds", async (req, res) => {
   const { username, amount } = req.body;
   try {
     // Check if the user exists in the database
-    const user = await pool.query("SELECT * FROM users WHERE username = $1", [
-      username,
-    ]);
+    const user = await db("users").where("username", username).first();
 
-    if (user.rowCount === 0) {
+    if (!user) {
       return res.status(404).json({ error: "User not found." });
     }
 
@@ -275,22 +245,19 @@ app.post("/api/withdraw-immediate-funds", async (req, res) => {
         .json({ error: "Withdrawal amount must be greater than zero." });
     }
 
-    // Check if the user has enough balance to withdraw
-    if (user.rows[0].balance < amount) {
-      return res.status(403).json({ error: "Insufficient funds." });
+    if (user.immediate_balance < amount) {
+      return res.status(403).json({ error: "Insufficient immediate funds." });
     }
 
     // Store the withdrawal request in the database
-    await pool.query(
-      "INSERT INTO withdrawal_requests (user_id, amount, is_approved) VALUES ($1, $2, true)",
-      [user.rows[0].id, amount]
-    );
-
-    // Deduct the requested amount from the user's balance
-    await pool.query("UPDATE users SET balance = balance - $1 WHERE id = $2", [
+    await db("withdrawal_requests").insert({
+      user_id: user.id,
       amount,
-      user.rows[0].id,
-    ]);
+      is_approved: true,
+    });
+
+    // Deduct the requested amount from the user's immediate balance
+    await db("users").where("username", username).decrement("immediate_balance", amount);
 
     res.json({ message: "Withdrawal request for immediate funds sent successfully." });
   } catch (error) {
@@ -299,16 +266,13 @@ app.post("/api/withdraw-immediate-funds", async (req, res) => {
   }
 });
 
-//locked withdrawal request
+// Locked withdrawal request
 app.post("/api/withdraw", async (req, res) => {
   const { username, amount } = req.body;
   try {
     // Check if the recipient exists in the database
-    const recipientUser = await pool.query(
-      "SELECT * FROM users WHERE username = $1",
-      [username]
-    );
-    if (recipientUser.rowCount === 0) {
+    const recipientUser = await db("users").where("username", username).first();
+    if (!recipientUser) {
       return res.status(404).json({ error: "Recipient not found." });
     }
 
@@ -320,10 +284,11 @@ app.post("/api/withdraw", async (req, res) => {
 
     // Store the withdrawal request in the database
     // Set the sender_id to the currently authenticated user's id
-    await pool.query(
-      "INSERT INTO withdrawal_requests (user_id, sender_id, amount) VALUES ($1, $2, $3)",
-      [recipientUser.rows[0].id, req.session.user.id, amount]
-    );
+    await db("withdrawal_requests").insert({
+      user_id: recipientUser.id,
+      sender_id: req.session.user.id,
+      amount,
+    });
 
     res.json({ message: "Withdrawal request sent successfully." });
   } catch (error) {
@@ -332,107 +297,89 @@ app.post("/api/withdraw", async (req, res) => {
   }
 });
 
-
-//sender approval
+// Sender approval
 app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
   const { requestId } = req.params;
   try {
     // Check if the request exists
-    const request = await pool.query(
-      "SELECT * FROM withdrawal_requests WHERE id = $1",
-      [requestId]
-    );
+    const request = await db("withdrawal_requests").where("id", requestId).first();
 
-    if (request.rowCount === 0) {
+    if (!request) {
       return res.status(404).json({ error: "Withdrawal request not found." });
     }
 
     // Check if the sender is authorized to approve the request
-    if (request.rows[0].sender_id !== req.session.user.id) {
+    if (request.sender_id !== req.session.user.id) {
       return res
         .status(403)
         .json({ error: "You are not authorized to approve this request." });
     }
 
     // Check if the request is already approved
-    if (request.rows[0].is_approved) {
+    if (request.is_approved) {
       return res.status(400).json({ error: "Request is already approved." });
     }
 
     // Update the status to 'approved'
-    await pool.query(
-      "UPDATE withdrawal_requests SET is_approved = true WHERE id = $1",
-      [requestId]
-    );
+    await db("withdrawal_requests").where("id", requestId).update({
+      is_approved: true,
+    });
 
     // Get the requested amount from the withdrawal request
-    const requestedAmount = request.rows[0].amount;
+    const requestedAmount = request.amount;
 
-    // Get the user's balance
-    const user = await pool.query(
-      "SELECT * FROM users WHERE id = $1 FOR UPDATE",
-      [request.rows[0].user_id]
-    );
+    // Get the user's immediate balance
+    const user = await db("users")
+      .where("id", request.user_id)
+      .select("immediate_balance")
+      .first();
 
-    if (user.rowCount === 0) {
+    if (!user) {
       return res.status(404).json({ error: "User not found." });
     }
 
-    // Check if the user has enough balance to withdraw
-    if (user.rows[0].balance < requestedAmount) {
-      return res.status(403).json({ error: "Insufficient funds." });
+    // Check if the user has enough immediate balance to withdraw
+    if (user.immediate_balance < requestedAmount) {
+      return res.status(403).json({ error: "Insufficient immediate funds." });
     }
 
-    // Deduct the requested amount from the user's balance
-    await pool.query(
-      "UPDATE users SET balance = balance - $1 WHERE id = $2",
-      [requestedAmount, request.rows[0].user_id]
-    );
+    // Deduct the requested amount from the user's immediate balance
+    await db("users").where("id", request.user_id).decrement("immediate_balance", requestedAmount);
 
     // Update the status of the withdrawal request to 'approved'
-    await pool.query(
-      "UPDATE withdrawal_requests SET status = 'approved' WHERE id = $1",
-      [requestId]
-    );
-
-    await pool.query("COMMIT"); // Commit the transaction
+    await db("withdrawal_requests").where("id", requestId).update({
+      status: "approved",
+    });
 
     res.json({ message: "Withdrawal request approved successfully." });
   } catch (error) {
-    await pool.query("ROLLBACK"); // Rollback the transaction on error
     console.error(error);
     res.status(500).json({ error: "Internal server error." });
   }
 });
 
-
-
-//Reject the request
+// Reject the request
 app.patch("/api/reject-withdrawal/:requestId", async (req, res) => {
   const { requestId } = req.params;
   try {
     // Check if the request exists
-    const request = await pool.query(
-      "SELECT * FROM withdrawal_requests WHERE id = $1",
-      [requestId]
-    );
+    const request = await db("withdrawal_requests").where("id", requestId).first();
 
-    if (request.rowCount === 0) {
+    if (!request) {
       return res.status(404).json({ error: "Withdrawal request not found." });
     }
 
     // Check if the sender is authorized to reject the request
-    if (request.rows[0].user_id !== req.session.user.id) {
+    if (request.user_id !== req.session.user.id) {
       return res
         .status(403)
         .json({ error: "You are not authorized to reject this request." });
     }
 
     // Update the status to 'rejected'
-    await pool.query(
-      "UPDATE withdrawal_requests SET status = 'rejected' WHERE id = $1",
-      [requestId]
-    );
+    await db("withdrawal_requests").where("id", requestId).update({
+      status: "rejected",
+    });
 
     res.json({ message: "Withdrawal request rejected successfully." });
   } catch (error) {
@@ -441,13 +388,11 @@ app.patch("/api/reject-withdrawal/:requestId", async (req, res) => {
   }
 });
 
-//get methods
-
 // Get All Users
 app.get("/api/users", async (req, res) => {
   try {
-    const users = await pool.query("SELECT * FROM users");
-    res.json(users.rows);
+    const users = await db("users").select("*");
+    res.json(users);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal server error." });
@@ -467,9 +412,8 @@ app.get("/api/current-user", requireAuth, (req, res) => {
 app.get("/api/withdrawal-requests", async (req, res) => {
   try {
     // Retrieve all withdrawal requests from the database
-    const requests = await pool.query("SELECT * FROM withdrawal_requests");
-
-    res.json(requests.rows);
+    const requests = await db("withdrawal_requests").select("*");
+    res.json(requests);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal server error." });
@@ -480,9 +424,8 @@ app.get("/api/withdrawal-requests", async (req, res) => {
 app.get("/api/transactions", async (req, res) => {
   try {
     // Retrieve all transactions from the database
-    const transactions = await pool.query("SELECT * FROM transactions");
-
-    res.json(transactions.rows);
+    const transactions = await db("transactions").select("*");
+    res.json(transactions);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal server error." });
