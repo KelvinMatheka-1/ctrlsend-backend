@@ -195,22 +195,22 @@ app.post("/api/transfer", async (req, res) => {
       return res.status(400).json({ error: "Amount must be greater than zero." });
     }
 
-    if (senderUser.approved_balance < amount) {
+    if (senderUser.locked_balance < amount) {
       return res.status(403).json({ error: "Insufficient locked funds." });
     }
 
     // Perform the money transfer
     await db.transaction(async (trx) => {
-      // Deduct amount from sender's approved balance
+      // Deduct amount from sender's locked balance
       await db("users")
         .where("username", sender)
-        .decrement("approved_balance", amount)
+        .decrement("locked_balance", amount)
         .transacting(trx);
 
-      // Add amount to recipient's approved balance
+      // Add amount to recipient's locked balance
       await db("users")
         .where("username", recipient)
-        .increment("approved_balance", amount)
+        .increment("locked_balance", amount)
         .transacting(trx);
 
       // Insert a record into the transactions table
@@ -328,23 +328,23 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
     // Get the requested amount from the withdrawal request
     const requestedAmount = request.amount;
 
-    // Get the user's immediate balance
+    // Get the user's locked balance
     const user = await db("users")
       .where("id", request.user_id)
-      .select("immediate_balance")
+      .select("locked_balance")
       .first();
 
     if (!user) {
       return res.status(404).json({ error: "User not found." });
     }
 
-    // Check if the user has enough immediate balance to withdraw
-    if (user.immediate_balance < requestedAmount) {
-      return res.status(403).json({ error: "Insufficient immediate funds." });
+    // Check if the user has enough locked balance to withdraw
+    if (user.locked_balance < requestedAmount) {
+      return res.status(403).json({ error: "Insufficient locked funds." });
     }
 
-    // Deduct the requested amount from the user's immediate balance
-    await db("users").where("id", request.user_id).decrement("immediate_balance", requestedAmount);
+    // Deduct the requested amount from the user's locked balance
+    await db("users").where("id", request.user_id).decrement("locked_balance", requestedAmount);
 
     // Update the status of the withdrawal request to 'approved'
     await db("withdrawal_requests").where("id", requestId).update({
