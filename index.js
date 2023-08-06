@@ -328,23 +328,25 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
     // Get the requested amount from the withdrawal request
     const requestedAmount = request.amount;
 
-    // Get the user's locked balance
-    const user = await db("users")
-      .where("id", request.user_id)
+    // Get the sender user's locked balance
+    const senderUser = await db("users")
+      .where("id", request.sender_id)
       .select("locked_balance")
       .first();
 
-    if (!user) {
+    if (!senderUser) {
       return res.status(404).json({ error: "User not found." });
     }
 
-    // Check if the user has enough locked balance to withdraw
-    if (user.locked_balance < requestedAmount) {
+    // Check if the sender has enough locked balance to approve the withdrawal
+    if (senderUser.locked_balance < requestedAmount) {
       return res.status(403).json({ error: "Insufficient locked funds." });
     }
 
-    // Deduct the requested amount from the user's locked balance
-    await db("users").where("id", request.user_id).decrement("locked_balance", requestedAmount);
+    // Deduct the requested amount from the sender's locked balance
+    await db("users")
+      .where("id", request.sender_id)
+      .decrement("locked_balance", requestedAmount);
 
     // Update the status of the withdrawal request to 'approved'
     await db("withdrawal_requests").where("id", requestId).update({
@@ -357,6 +359,7 @@ app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
 
 // Reject the request
 app.patch("/api/reject-withdrawal/:requestId", async (req, res) => {
@@ -431,6 +434,38 @@ app.get("/api/transactions", async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
+// Delete User Account and Related Data
+app.delete("/api/users/:userId", requireAuth, async (req, res) => {
+  const userId = req.params.userId;
+
+  try {
+    // Check if the user exists in the database
+    const user = await db("users").where("id", userId).first();
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    // Perform cleanup of related data
+    await db.transaction(async (trx) => {
+      // Delete transactions associated with the user
+      await db("transactions").where("sender_id", userId).orWhere("recipient_id", userId).del().transacting(trx);
+
+      // Delete withdrawal requests associated with the user
+      await db("withdrawal_requests").where("user_id", userId).del().transacting(trx);
+
+      // Delete the user
+      await db("users").where("id", userId).del().transacting(trx);
+    });
+
+    res.json({ message: "User account and related data deleted successfully." });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
+
 
 // Start the server
 app.listen(PORT, () => {

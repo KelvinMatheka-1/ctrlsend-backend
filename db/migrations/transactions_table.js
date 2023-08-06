@@ -1,6 +1,7 @@
 exports.up = function (knex) {
   return knex.schema.createTable('transactions', function (table) {
     table.increments('id').primary();
+    
     table.integer('sender_id').notNullable();
     table.integer('recipient_id').notNullable();
     table.decimal('amount').notNullable();
