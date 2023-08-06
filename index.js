@@ -370,17 +370,8 @@ app.post("/api/approve-withdrawal/:requestId", requireAuth, async (req, res) => 
       return res.status(404).json({ error: "Withdrawal request not found." });
     }
 
-    // Fetch the sender user from the database
-    const senderUser = await db("users")
-      .where("id", request.sender_id)
-      .first();
-
-    if (!senderUser) {
-      return res.status(404).json({ error: "Sender not found." });
-    }
-
-    // Check if the currently logged-in user is the sender of the money
-    if (senderUser.id !== req.session.user.id) {
+    // Check if the currently logged-in user is the sender of the funds
+    if (req.session.user.id !== request.sender_id) {
       return res
         .status(403)
         .json({ error: "You are not authorized to approve this request." });
@@ -398,7 +389,7 @@ app.post("/api/approve-withdrawal/:requestId", requireAuth, async (req, res) => 
 
     // Deduct the approved amount from the user's locked balance
     await db("users")
-      .where("id", request.user_id)
+      .where("id", request.recipient_id)
       .decrement("locked_balance", request.amount);
 
     res.json({ message: "Withdrawal request approved successfully." });
@@ -407,6 +398,8 @@ app.post("/api/approve-withdrawal/:requestId", requireAuth, async (req, res) => 
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
+
 
 
 
