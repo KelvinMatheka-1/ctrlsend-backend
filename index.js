@@ -131,7 +131,7 @@ app.get("/api/protected", requireAuth, (req, res) => {
 });
 
 // Immediate Money Transfer
-app.post("/api/immediate-transfer", async (req, res) => {
+app.post("/api/immediate-transfer", requireAuth, async (req, res) => {
   const { sender, recipient, amount } = req.body;
   try {
     // Fetch sender and recipient users from the database
@@ -180,7 +180,7 @@ app.post("/api/immediate-transfer", async (req, res) => {
 });
 
 // Locked Money Transfer
-app.post("/api/transfer", async (req, res) => {
+app.post("/api/transfer", requireAuth, async (req, res) => {
   const { sender, recipient, amount } = req.body;
   try {
     // Fetch sender and recipient users from the database
@@ -229,7 +229,7 @@ app.post("/api/transfer", async (req, res) => {
 });
 
 // Withdrawal request for immediate funds
-app.post("/api/withdraw-immediate-funds", async (req, res) => {
+app.post("/api/withdraw-immediate-funds", requireAuth, async (req, res) => {
   const { username, amount } = req.body;
   try {
     // Check if the user exists in the database
@@ -267,7 +267,7 @@ app.post("/api/withdraw-immediate-funds", async (req, res) => {
 });
 
 // Locked withdrawal request
-app.post("/api/withdraw", async (req, res) => {
+app.post("/api/withdraw", requireAuth, async (req, res) => {
   const { username, amount } = req.body;
   try {
     // Fetch sender and recipient users from the database
@@ -314,7 +314,7 @@ app.post("/api/withdraw", async (req, res) => {
 
 
 // Reject the request
-app.patch("/api/reject-withdrawal/:requestId", async (req, res) => {
+app.patch("/api/reject-withdrawal/:requestId", requireAuth, async (req, res) => {
   const { requestId } = req.params;
   try {
     // Check if the request exists
