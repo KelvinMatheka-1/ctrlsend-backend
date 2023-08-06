@@ -250,11 +250,11 @@ app.post("/api/withdraw-immediate-funds", async (req, res) => {
     }
 
     // Store the withdrawal request in the database
-    await db("withdrawal_requests").insert({
-      user_id: user.id,
-      amount,
-      is_approved: true,
-    });
+    // await db("withdrawal_requests").insert({
+    //   user_id: user.id,
+    //   amount,
+    //   is_approved: true,
+    // });
 
     // Deduct the requested amount from the user's immediate balance
     await db("users").where("username", username).decrement("immediate_balance", amount);
@@ -270,8 +270,10 @@ app.post("/api/withdraw-immediate-funds", async (req, res) => {
 app.post("/api/withdraw", async (req, res) => {
   const { username, amount } = req.body;
   try {
-    // Check if the recipient exists in the database
+    // Fetch sender and recipient users from the database
     const recipientUser = await db("users").where("username", username).first();
+    const senderUser = await db("users").where("id", req.session.user.id).first();
+
     if (!recipientUser) {
       return res.status(404).json({ error: "Recipient not found." });
     }
@@ -282,78 +284,28 @@ app.post("/api/withdraw", async (req, res) => {
         .json({ error: "Withdrawal amount must be greater than zero." });
     }
 
-    // Store the withdrawal request in the database
-    // Set the sender_id to the currently authenticated user's id
-    await db("withdrawal_requests").insert({
-      user_id: recipientUser.id,
-      sender_id: req.session.user.id,
-      amount,
-    });
-
-    res.json({ message: "Withdrawal request sent successfully." });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Internal server error." });
-  }
-});
-
-// Sender approval
-app.patch("/api/approve-withdrawal/:requestId", async (req, res) => {
-  const { requestId } = req.params;
-  try {
-    // Check if the request exists
-    const request = await db("withdrawal_requests").where("id", requestId).first();
-
-    if (!request) {
-      return res.status(404).json({ error: "Withdrawal request not found." });
-    }
-
-    // Check if the sender is authorized to approve the request
-    if (request.sender_id !== req.session.user.id) {
-      return res
-        .status(403)
-        .json({ error: "You are not authorized to approve this request." });
-    }
-
-    // Check if the request is already approved
-    if (request.is_approved) {
-      return res.status(400).json({ error: "Request is already approved." });
-    }
-
-    // Update the status to 'approved'
-    await db("withdrawal_requests").where("id", requestId).update({
-      is_approved: true,
-    });
-
-    // Get the requested amount from the withdrawal request
-    const requestedAmount = request.amount;
-
-    // Get the sender user's locked balance
-    const senderUser = await db("users")
-      .where("id", request.sender_id)
-      .select("locked_balance")
-      .first();
-
-    if (!senderUser) {
-      return res.status(404).json({ error: "User not found." });
-    }
-
-    // Check if the sender has enough locked balance to approve the withdrawal
-    if (senderUser.locked_balance < requestedAmount) {
+    // Check if the sender has enough locked balance to make the withdrawal
+    if (senderUser.locked_balance < amount) {
       return res.status(403).json({ error: "Insufficient locked funds." });
     }
 
-    // Deduct the requested amount from the sender's locked balance
-    await db("users")
-      .where("id", request.sender_id)
-      .decrement("locked_balance", requestedAmount);
+    // Perform the withdrawal
+    await db.transaction(async (trx) => {
+      // Deduct amount from sender's locked balance
+      await db("users")
+        .where("id", req.session.user.id)
+        .decrement("locked_balance", amount)
+        .transacting(trx);
 
-    // Update the status of the withdrawal request to 'approved'
-    await db("withdrawal_requests").where("id", requestId).update({
-      status: "approved",
+      // Store the withdrawal request in the database
+      await db("withdrawal_requests").insert({
+        user_id: recipientUser.id,
+        sender_id: req.session.user.id,
+        amount,
+      });
     });
 
-    res.json({ message: "Withdrawal request approved successfully." });
+    res.json({ message: "Withdrawal request sent successfully." });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal server error." });
