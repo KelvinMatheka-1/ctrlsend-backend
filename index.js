@@ -323,7 +323,6 @@ app.post("/api/withdraw", requireAuth, async (req, res) => {
         .status(400)
         .json({ error: "Withdrawal amount must be greater than zero." });
     }
-
     // Check if the sender and recipient are the same as the logged-in user
     if (req.session.user.username !== username) {
       return res.status(403).json({ error: "You are not authorized to withdraw funds for this user." });
@@ -333,7 +332,6 @@ app.post("/api/withdraw", requireAuth, async (req, res) => {
     if (senderUser.locked_balance < amount) {
       return res.status(403).json({ error: "Insufficient locked funds." });
     }
-
     // Perform the withdrawal
     await db.transaction(async (trx) => {
       // Deduct amount from sender's locked balance
