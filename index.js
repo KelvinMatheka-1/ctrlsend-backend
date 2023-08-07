@@ -194,7 +194,6 @@ app.post("/api/immediate-transfer", requireAuth, async (req, res) => {
   }
 });
 
-
 // Locked Money Transfer
 app.post("/api/transfer", requireAuth, async (req, res) => {
   const { recipient, amount } = req.body;
@@ -260,7 +259,6 @@ app.post("/api/transfer", requireAuth, async (req, res) => {
 });
 
 
-
 // Withdrawal request for immediate funds
 app.post("/api/withdraw-immediate-funds", requireAuth, async (req, res) => {
   const { username, amount } = req.body;
@@ -303,7 +301,6 @@ app.post("/api/withdraw-immediate-funds", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
-
 
 
 // Locked withdrawal request
@@ -402,10 +399,6 @@ app.post("/api/approve-withdrawal/:requestId", requireAuth, async (req, res) => 
   }
 });
 
-
-
-
-
 // Reject the request
 app.patch("/api/reject-withdrawal/:requestId", requireAuth, async (req, res) => {
   const { requestId } = req.params;
@@ -468,7 +461,6 @@ app.get("/api/withdrawal-requests", async (req, res) => {
   }
 });
 
-
 // Get all transactions
 app.get("/api/transactions", async (req, res) => {
   try {
@@ -511,7 +503,6 @@ app.delete("/api/users/:userId", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
-
 
 // Start the server
 app.listen(PORT, () => {
