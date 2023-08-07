@@ -392,12 +392,18 @@ app.post("/api/approve-withdrawal/:requestId", requireAuth, async (req, res) => 
       .where("id", request.user_id)
       .decrement("locked_balance", request.amount);
 
+    // Add the approved amount to the user's approved balance
+    await db("users")
+      .where("id", request.user_id)
+      .increment("approved_balance", request.amount);
+
     res.json({ message: "Withdrawal request approved successfully." });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
 
 
 
