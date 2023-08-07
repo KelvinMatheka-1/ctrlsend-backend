@@ -304,6 +304,42 @@ app.post("/api/withdraw-immediate-funds", requireAuth, async (req, res) => {
   }
 });
 
+// Locked withdrawal request
+app.post("/api/withdraw", requireAuth, async (req, res) => {
+  const { username, amount } = req.body;
+  try {
+    // Fetch recipient user from the database
+    const recipientUser = await db("users").where("username", username).first();
+    const senderUser = await db("users").where("id", req.session.user.id).first();
+
+    if (!recipientUser) {
+      return res.status(404).json({ error: "Recipient not found." });
+    }
+
+    if (amount <= 0) {
+      return res
+        .status(400)
+        .json({ error: "Withdrawal amount must be greater than zero." });
+    }
+
+    // Check if the sender and recipient are the same as the logged-in user
+    if (req.session.user.username !== username) {
+      return res.status(403).json({ error: "You are not authorized to withdraw funds for this user." });
+    }
+
+    // Perform the withdrawal request
+    await db("withdrawal_requests").insert({
+      user_id: recipientUser.id,
+      sender_id: req.session.user.id,
+      amount,
+    });
+
+    res.json({ message: "Withdrawal request sent successfully." });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
 
 
 // Sender approval for withdrawal request
