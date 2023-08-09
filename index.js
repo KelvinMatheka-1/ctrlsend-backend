@@ -354,10 +354,8 @@ app.post("/api/approve-withdrawal/:requestId", requireAuth, async (req, res) => 
     }
 
     // Check if the currently logged-in user is the sender of the money
-    if (req.session.user.id !== request.user_id) {
-      return res
-        .status(403)
-        .json({ error: "You are not authorized to approve this request." });
+    if (req.session.user.id !== request.sender_id) {
+      return res.status(403).json({ error: "Only sender can approve" });
     }
 
     // Check if the request is already approved
