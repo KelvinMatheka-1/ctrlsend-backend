@@ -387,7 +387,7 @@ app.post("/api/approve-withdrawal/:requestId", requireAuth, async (req, res) => 
   }
 });
 
-// Reject the request
+// Reject the request & refund automatically
 app.patch("/api/reject-withdrawal/:requestId", requireAuth, async (req, res) => {
   const { requestId } = req.params;
   try {
@@ -405,9 +405,18 @@ app.patch("/api/reject-withdrawal/:requestId", requireAuth, async (req, res) => 
         .json({ error: "You are not authorized to reject this request." });
     }
 
-    // Update the status to 'rejected'
-    await db("withdrawal_requests").where("id", requestId).update({
-      status: "rejected",
+    // Begin a database transaction
+    await db.transaction(async (trx) => {
+      // Update the status to 'rejected'
+      await db("withdrawal_requests").where("id", requestId).update({
+        status: "rejected",
+      });
+
+      // Reverse the withdrawn amount back to the sender's balance
+      await db("users")
+        .where("id", request.sender_id)
+        .increment("locked_balance", request.amount)
+        .transacting(trx);
     });
 
     res.json({ message: "Withdrawal request rejected successfully." });
