@@ -387,6 +387,51 @@ app.post("/api/approve-withdrawal/:requestId", requireAuth, async (req, res) => 
   }
 });
 
+// Reverse transaction
+app.post("/api/reverse-transaction/:transactionId", requireAuth, async (req, res) => {
+  const { transactionId } = req.params;
+
+  try {
+    // Fetch the transaction from the database
+    const transaction = await db("transactions").where("id", transactionId).first();
+
+    if (!transaction) {
+      return res.status(404).json({ error: "Transaction not found." });
+    }
+
+    // Check if the transaction has already been reversed
+    if (transaction.is_reversed) {
+      return res.status(400).json({ error: "Transaction is already reversed." });
+    }
+
+    // Perform the reversal
+    await db.transaction(async (trx) => {
+      // Mark the transaction as reversed
+      await db("transactions").where("id", transactionId).update({
+        is_reversed: true,
+      });
+
+      // Deduct the transaction amount from the recipient's immediate balance
+      await db("users")
+        .where("id", transaction.recipient_id)
+        .decrement("immediate_balance", transaction.amount)
+        .transacting(trx);
+
+      // Add the transaction amount back to the sender's locked balance
+      await db("users")
+        .where("id", transaction.sender_id)
+        .increment("locked_balance", transaction.amount)
+        .transacting(trx);
+    });
+
+    res.json({ message: "Transaction reversed successfully." });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
+
+
 // Reject the request
 app.patch("/api/reject-withdrawal/:requestId", requireAuth, async (req, res) => {
   const { requestId } = req.params;
