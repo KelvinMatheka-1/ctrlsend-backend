@@ -416,11 +416,11 @@ app.post("/api/reverse-transaction/:transactionId", requireAuth, async (req, res
         is_reversed: true,
       });
 
-      // Deduct the transaction amount from the recipient's immediate balance
+      // Deduct the transaction amount from the recipient's locked balance
       await db("users")
-        .where("id", transaction.recipient_id)
-        .decrement("immediate_balance", transaction.amount)
-        .transacting(trx);
+      .where("id", transaction.recipient_id)
+      .decrement("locked_balance", transaction.amount)
+      .transacting(trx);
 
       // Add the transaction amount back to the sender's locked balance
       await db("users")
