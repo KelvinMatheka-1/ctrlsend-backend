@@ -404,6 +404,11 @@ app.post("/api/reverse-transaction/:transactionId", requireAuth, async (req, res
       return res.status(400).json({ error: "Transaction is already reversed." });
     }
 
+    // Ensure the currently logged-in user is the sender of the transaction
+    if (req.session.user.id !== transaction.sender_id) {
+      return res.status(403).json({ error: "You are not authorized to reverse this transaction." });
+    }
+
     // Perform the reversal
     await db.transaction(async (trx) => {
       // Mark the transaction as reversed
