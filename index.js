@@ -123,13 +123,6 @@ app.post("/api/logout", (req, res) => {
   });
 });
 
-// Protected route example
-app.get("/api/protected", requireAuth, (req, res) => {
-  // The user is authenticated, handle the protected route logic here
-  const user = req.session.user;
-  res.json({ message: "This is a protected route." });
-});
-
 // Immediate Money Transfer
 app.post("/api/immediate-transfer", requireAuth, async (req, res) => {
   const { recipient, amount } = req.body;
