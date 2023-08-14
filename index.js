@@ -123,6 +123,7 @@ app.post("/api/logout", (req, res) => {
   });
 });
 
+
 // Immediate Money Transfer
 app.post("/api/immediate-transfer", requireAuth, async (req, res) => {
   const { recipient, amount } = req.body;
