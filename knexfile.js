@@ -2,8 +2,8 @@ module.exports = {
   development: {
     client: 'pg',
     connection: {
-      host: 'localhost',
-      user: 'kelvin',
+      host: 'ctrlsend.cfv8oi2zcuah.eu-north-1.rds.amazonaws.com',
+      user: 'postgres',
       password: 'Omarionconor2',
       database: 'ctrlsend',
     },
