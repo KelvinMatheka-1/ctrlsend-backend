@@ -2,10 +2,10 @@ module.exports = {
   development: {
     client: 'pg',
     connection: {
-      host: 'localhost',
-      user: 'kelvin',
-      password: 'Omarionconor2',
-      database: 'ctrlsend',
+      host: 'db.yhnevhdrvsbdnhgseple.supabase.co',
+      user: 'postgres',
+      password: 'Omarionconor321*',
+      database: 'postgres',
     },
     migrations: {
       tableName: 'knex_migrations',
