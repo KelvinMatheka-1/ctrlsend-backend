@@ -13,8 +13,8 @@ const PORT = 5000; // Change this to the desired port number
 const db = knex({
   client: "pg",
   connection: {
-    host: "ctrlsend.cfv8oi2zcuah.eu-north-1.rds.amazonaws.com",
-    user: "postgres",
+    host: "localhost",
+    user: "kelvin",
     password: "Omarionconor2",
     database: "ctrlsend",
     port: 5432,
@@ -97,6 +97,16 @@ app.post("/api/login", async (req, res) => {
     if (!isPasswordValid) {
       return res.status(401).json({ error: "Invalid username or password." });
     }
+
+    // Get the hashed password from database
+  const hashedPassword = user.password;
+
+  // Use bcrypt to compare with original input password
+  const passwordsMatch = await bcrypt.compare(password, hashedPassword);
+
+  if(!passwordsMatch) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
 
     // Save user information in the session after successful login
     req.session.user = {
