@@ -502,7 +502,16 @@ app.get("/api/withdrawal-requests", async (req, res) => {
 });
 
 // Get all transactions
-
+app.get("/api/transactions", async (req, res) => {
+  try {
+    // Retrieve all transactions from the database
+    const transactions = await db("transactions").select("*");
+    res.json(transactions);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
 
 // Delete User Account and Related Data
 app.delete("/api/users/:userId", requireAuth, async (req, res) => {
