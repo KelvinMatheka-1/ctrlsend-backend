@@ -514,35 +514,7 @@ app.get("/api/transactions", async (req, res) => {
 });
 
 // Delete User Account and Related Data
-app.delete("/api/users/:userId", requireAuth, async (req, res) => {
-  const userId = req.params.userId;
 
-  try {
-    // Check if the user exists in the database
-    const user = await db("users").where("id", userId).first();
-
-    if (!user) {
-      return res.status(404).json({ error: "User not found." });
-    }
-
-    // Perform cleanup of related data
-    await db.transaction(async (trx) => {
-      // Delete transactions associated with the user
-      await db("transactions").where("sender_id", userId).orWhere("recipient_id", userId).del().transacting(trx);
-
-      // Delete withdrawal requests associated with the user
-      await db("withdrawal_requests").where("user_id", userId).del().transacting(trx);
-
-      // Delete the user
-      await db("users").where("id", userId).del().transacting(trx);
-    });
-
-    res.json({ message: "User account and related data deleted successfully." });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Internal server error." });
-  }
-});
 
 // Start the server
 app.listen(PORT, () => {
