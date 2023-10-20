@@ -490,16 +490,7 @@ app.get("/api/current-user", requireAuth, (req, res) => {
 });
 
 // Get all withdrawal requests
-app.get("/api/withdrawal-requests", async (req, res) => {
-  try {
-    // Retrieve all withdrawal requests from the database
-    const requests = await db("withdrawal_requests").select("*");
-    res.json(requests);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Internal server error." });
-  }
-});
+
 
 // Get all transactions
 app.get("/api/transactions", async (req, res) => {
