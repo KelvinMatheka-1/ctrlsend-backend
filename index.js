@@ -481,13 +481,6 @@ app.get("/api/users", async (req, res) => {
 });
 
 // Get the currently logged-in user
-app.get("/api/current-user", requireAuth, (req, res) => {
-  // The user is authenticated, so req.session.user should contain the user information
-  const user = req.session.user;
-
-  // Return the user information as a JSON response
-  res.json({ user });
-});
 
 // Get all withdrawal requests
 app.get("/api/withdrawal-requests", async (req, res) => {
