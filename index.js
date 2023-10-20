@@ -440,7 +440,34 @@ app.post("/api/reverse-transaction/:transactionId", requireAuth, async (req, res
 
 
 // Reject the request
+app.patch("/api/reject-withdrawal/:requestId", requireAuth, async (req, res) => {
+  const { requestId } = req.params;
+  try {
+    // Check if the request exists
+    const request = await db("withdrawal_requests").where("id", requestId).first();
 
+    if (!request) {
+      return res.status(404).json({ error: "Withdrawal request not found." });
+    }
+
+    // Check if the sender is authorized to reject the request
+    if (request.user_id !== req.session.user.id) {
+      return res
+        .status(403)
+        .json({ error: "You are not authorized to reject this request." });
+    }
+
+    // Update the status to 'rejected'
+    await db("withdrawal_requests").where("id", requestId).update({
+      status: "rejected",
+    });
+
+    res.json({ message: "Withdrawal request rejected successfully." });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
 
 // Get All Users
 app.get("/api/users", async (req, res) => {
