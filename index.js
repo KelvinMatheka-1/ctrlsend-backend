@@ -4,7 +4,7 @@ const cors = require("cors");
 const bcrypt = require("bcrypt");
 const session = require("express-session");
 const { v4: uuidv4 } = require("uuid");
-
+const knex = require("knex");
 
 const app = express();
 const PORT = 5000; // Change this to the desired port number
