@@ -13,8 +13,8 @@ const PORT = 5000; // Change this to the desired port number
 const db = knex({
   client: "pg",
   connection: {
-    host: "localhost",
-    user: "kelvin",
+    host: "db.yhnevhdrvsbdnhgseple.supabase.co",
+    user: "postgres",
     password: "Omarionconor321*",
     database: "postgres",
     port: 5432,
