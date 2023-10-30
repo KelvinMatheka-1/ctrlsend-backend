@@ -84,7 +84,43 @@ app.post("/api/register", async (req, res) => {
 });
 
 // User Login
+app.post("/api/login", async (req, res) => {
+  const { username, password } = req.body;
+  try {
+    const user = await db("users").where("username", username).first();
 
+    if (!user) {
+      return res.status(401).json({ error: "Invalid username or password." });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: "Invalid username or password." });
+    }
+
+    // Get the hashed password from database
+  const hashedPassword = user.password;
+
+  // Use bcrypt to compare with original input password
+  const passwordsMatch = await bcrypt.compare(password, hashedPassword);
+
+  if(!passwordsMatch) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+
+    // Save user information in the session after successful login
+    req.session.user = {
+      id: user.id,
+      username: user.username,
+      // Add any other user information you want to store in the session
+    };
+
+    res.json({ message: "Login successful.", username: user.username });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
 
 // User Logout
 app.post("/api/logout", (req, res) => {
