@@ -55,7 +55,33 @@ function requireAuth(req, res, next) {
 }
 
 // User Registration
+app.post("/api/register", async (req, res) => {
+  const { username, email, password } = req.body;
+  if (!username || !email || !password) {
+    return res
+      .status(400)
+      .json({ error: "Please provide username, email, and password." });
+  }
 
+  try {
+    // Check if the user already exists in the database
+    const existingUser = await db("users").where("username", username).first();
+    if (existingUser) {
+      return res.status(409).json({ error: "User already exists." });
+    }
+
+    // Store the new user in the database
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = await db("users")
+      .insert({ username, email, password: hashedPassword })
+      .returning("*");
+
+    res.json(newUser[0]);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "An error occurred while registering the user." });
+  }
+});
 
 // User Login
 app.post("/api/login", async (req, res) => {
