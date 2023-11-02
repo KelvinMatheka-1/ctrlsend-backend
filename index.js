@@ -123,6 +123,15 @@ app.post("/api/login", async (req, res) => {
 });
 
 // User Logout
+app.post("/api/logout", (req, res) => {
+  // Clear the user session to log the user out
+  req.session.destroy((err) => {
+    if (err) {
+      console.error("Error destroying session:", err);
+    }
+    res.json({ message: "Logged out successfully." });
+  });
+});
 
 
 // Immediate Money Transfer
