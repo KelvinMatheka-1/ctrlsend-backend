@@ -15,7 +15,6 @@ const db = knex({
   connection: {
     host: "db.yhnevhdrvsbdnhgseple.supabase.co",
     user: "postgres",
-    password: "Omarionconor321*",
     database: "postgres",
     port: 5432,
   },
